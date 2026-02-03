@@ -7,6 +7,7 @@ description = "An LSM-tree based key-value storage engine built from scratch"
 [dependencies]
 # Dependencies added per milestone as you learn what each replaces:
 # M01: rand        — skip list level randomization
+rand = "0.8"
 # M05: parking_lot — better RwLock/Mutex than std
 # M06: crc32fast   — WAL record checksums
 # M13: bytes       — efficient byte buffer manipulation
