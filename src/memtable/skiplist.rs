@@ -57,7 +57,20 @@ pub struct SkipList {
 impl SkipList {
     /// Create a new empty skip list.
     pub fn new() -> Self {
-        todo!("[M01]: Initialize head sentinel with MAX_HEIGHT forward pointers")
+        let head = SkipNode {
+        key: Vec::new(),
+        value: Vec::new(),
+        forward: vec![None; MAX_HEIGHT],
+    };
+    let mut nodes = Vec::new();
+
+    nodes.push(head);
+
+        return SkipList {
+            nodes,
+            height: 1,
+            len: 0,
+        };  
     }
 
     /// Insert a key-value pair. Overwrites if key already exists.
