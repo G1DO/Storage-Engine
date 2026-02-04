@@ -10,6 +10,7 @@ description = "An LSM-tree based key-value storage engine built from scratch"
 rand = "0.8"
 # M05: parking_lot — better RwLock/Mutex than std
 # M06: crc32fast   — WAL record checksums
+crc32fast = "1.3"
 # M13: bytes       — efficient byte buffer manipulation
 # M22: crossbeam-channel — compaction scheduler communication
 
