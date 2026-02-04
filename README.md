@@ -91,11 +91,3 @@ cargo bench
 # Check without building
 cargo check
 ```
-
-## Project Structure
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the full component dependency graph, file structure, and data flow diagrams.
-
-See [MILESTONES.md](MILESTONES.md) for the milestone-driven build plan.
-
-See [JOURNAL.md](JOURNAL.md) for the learning journal.
