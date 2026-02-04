@@ -1,7 +1,8 @@
 // TODO [M01]: Implement skip list — insert and get
 // TODO [M02]: Implement skip list iterator
 // TODO [M03]: Track size in bytes
-
+use crate::error::Result;
+use crate::iterator::StorageIterator;
 
 /// Maximum height of the skip list. LevelDB uses 12.
 pub const MAX_HEIGHT: usize = 12;
@@ -81,7 +82,7 @@ impl SkipList {
     ///   2. Generate a random height for the new node (coin flip per level)
     ///   3. Create node with that height
     ///   4. Splice into the list at each level up to the node's height
-    pub fn insert(&mut self, key: Vec<u8>, value: Vec<u8>) {
+    pub fn insert(&mut  self, key: Vec<u8>, value: Vec<u8>) {
         let mut current = 0; // HEAD index
         let mut update: [usize; MAX_HEIGHT] = [0; MAX_HEIGHT];
 
@@ -194,10 +195,13 @@ impl SkipList {
     }
 
     /// Create an iterator over all entries in sorted order.
+
     /// Traverses level 0 (the bottom level contains all entries).
     pub fn iter(&self) -> SkipListIterator<'_> {
-        todo!("[M02]: Start iterator at first real node on level 0")
-    }
+        SkipListIterator {
+        list: self,
+        current: self.nodes[0].forward[0],
+    }}
 
     /// Generate a random level for a new node.
     /// Each level has a 1/4 probability (LevelDB uses 1/4, not 1/2).
@@ -217,11 +221,83 @@ impl SkipList {
 /// Simply follows level 0 forward pointers — level 0 is a sorted linked list
 /// containing every entry.
 pub struct SkipListIterator<'a> {
-    // TODO [M02]: Fields
-    //   - current: reference to current node (or None if exhausted)
-    _marker: std::marker::PhantomData<&'a ()>,
+    list: &'a SkipList,
+    current: Option<usize>,
 }
 
 impl<'a> SkipListIterator<'a> {
-    // TODO [M02]: Implement Iterator trait or StorageIterator trait
+    /// Returns true if iterator is at a valid position.
+    pub fn is_valid(&self) -> bool {
+        self.current.is_some()
+    }
+
+    /// Returns the key at current position.
+    /// Panics if iterator is not valid.
+    pub fn key(&self) -> &'a [u8] {
+        let idx = self.current.expect("iterator not valid");
+        self.list.nodes[idx].key.as_slice()
+    }
+
+    /// Returns the value at current position.
+    /// Panics if iterator is not valid.
+    pub fn value(&self) -> &'a [u8] {
+        let idx = self.current.expect("iterator not valid");
+        self.list.nodes[idx].value.as_slice()
+    }
+
+    /// Advances to the next entry.
+    pub fn advance(&mut self) {
+        if let Some(idx) = self.current {
+            self.current = self.list.nodes[idx].forward[0];
+        }
+    }
+
+    /// Seek to the first key >= target (internal implementation).
+    fn seek_to(&mut self, target: &[u8]) {
+        let mut current = 0; // HEAD
+        let mut level = self.list.height - 1;
+
+        loop {
+            let next = self.list.nodes[current].forward[level];
+            if let Some(next_idx) = next {
+                if self.list.nodes[next_idx].key.as_slice() < target {
+                    current = next_idx;
+                    continue;
+                }
+            }
+            if level == 0 {
+                break;
+            }
+            level -= 1;
+        }
+
+        // current is predecessor, forward[0] is first key >= target (or None)
+        self.current = self.list.nodes[current].forward[0];
+    }
+}
+
+impl<'a> StorageIterator for SkipListIterator<'a> {
+    fn is_valid(&self) -> bool {
+        self.current.is_some()
+    }
+
+    fn key(&self) -> &[u8] {
+        let idx = self.current.expect("iterator not valid");
+        self.list.nodes[idx].key.as_slice()
+    }
+
+    fn value(&self) -> &[u8] {
+        let idx = self.current.expect("iterator not valid");
+        self.list.nodes[idx].value.as_slice()
+    }
+
+    fn next(&mut self) -> Result<()> {
+        self.advance();
+        Ok(())
+    }
+
+    fn seek(&mut self, key: &[u8]) -> Result<()> {
+        self.seek_to(key);
+        Ok(())
+    }
 }

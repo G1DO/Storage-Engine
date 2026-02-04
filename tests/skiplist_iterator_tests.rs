@@ -10,7 +10,6 @@ use lsm_engine::iterator::StorageIterator;
 // An iterator over an empty skip list should immediately be invalid.
 // is_valid() returns false, and we shouldn't call key()/value() on it.
 #[test]
-#[ignore] // remove once implemented
 fn iterator_empty_skiplist_is_invalid() {
     let sl = SkipList::new();
     let iter = sl.iter();
@@ -22,7 +21,6 @@ fn iterator_empty_skiplist_is_invalid() {
 // =============================================================================
 // Insert one entry, iterate. Should see that entry, then become invalid.
 #[test]
-#[ignore]
 fn iterator_single_entry() {
     let mut sl = SkipList::new();
     sl.insert(b"key".to_vec(), b"value".to_vec());
@@ -45,7 +43,6 @@ fn iterator_single_entry() {
 // Insert entries out of order. Iterator should return them in sorted order.
 // This is the core guarantee of the skip list iterator.
 #[test]
-#[ignore]
 fn iterator_returns_sorted_order() {
     let mut sl = SkipList::new();
     // Insert out of order
@@ -79,7 +76,6 @@ fn iterator_returns_sorted_order() {
 // =============================================================================
 // Insert many entries, collect them all via iteration, verify count and order.
 #[test]
-#[ignore]
 fn iterator_collect_all_entries() {
     let mut sl = SkipList::new();
     for i in (0..100u32).rev() {
@@ -114,7 +110,6 @@ fn iterator_collect_all_entries() {
 // seek(key) positions iterator at the first entry with key >= target.
 // If the exact key exists, we land on it.
 #[test]
-#[ignore]
 fn iterator_seek_to_existing_key() {
     let mut sl = SkipList::new();
     sl.insert(b"a".to_vec(), b"1".to_vec());
@@ -134,7 +129,6 @@ fn iterator_seek_to_existing_key() {
 // =============================================================================
 // seek(key) for a key that doesn't exist lands on the first key > target.
 #[test]
-#[ignore]
 fn iterator_seek_to_nonexistent_key() {
     let mut sl = SkipList::new();
     sl.insert(b"a".to_vec(), b"1".to_vec());
@@ -153,7 +147,6 @@ fn iterator_seek_to_nonexistent_key() {
 // =============================================================================
 // seek(key) for a key greater than all entries makes iterator invalid.
 #[test]
-#[ignore]
 fn iterator_seek_past_end() {
     let mut sl = SkipList::new();
     sl.insert(b"a".to_vec(), b"1".to_vec());
@@ -170,7 +163,6 @@ fn iterator_seek_past_end() {
 // =============================================================================
 // seek(key) with a key smaller than all entries lands on the first entry.
 #[test]
-#[ignore]
 fn iterator_seek_to_beginning() {
     let mut sl = SkipList::new();
     sl.insert(b"b".to_vec(), b"2".to_vec());
