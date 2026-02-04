@@ -48,12 +48,7 @@ pub struct SkipList {
     nodes: Vec<SkipNode>,
     height: usize,
     len: usize,
-    
-    
-    //   - head: SkipNode (sentinel, no real key)
-    //   - height: usize (current max level in use)
-    //   - len: usize (number of entries)
-    //   - size_bytes: usize (total memory tracked)
+    size_bytes: usize,
 }
 
 impl SkipList {
@@ -72,6 +67,7 @@ impl SkipList {
             nodes,
             height: 1,
             len: 0,
+            size_bytes: 0,
         };  
     }
 
@@ -97,6 +93,8 @@ impl SkipList {
                     }
                     // Check for existing key at level 0
                     if self.nodes[next_idx].key.as_slice() == key.as_slice() {
+                        // Overwrite: add new value size (monotonically increasing)
+                        self.size_bytes += value.len();
                         self.nodes[next_idx].value = value;
                         return;
                     }
@@ -135,6 +133,11 @@ impl SkipList {
             // predecessor now points to new node
             self.nodes[update[level]].forward[level] = Some(new_idx);
         }
+
+        // Track size: key + value + forward pointers overhead
+        self.size_bytes += self.nodes[new_idx].key.len()
+            + self.nodes[new_idx].value.len()
+            + new_height * std::mem::size_of::<Option<usize>>();
 
         self.len += 1;
     }
@@ -191,7 +194,7 @@ impl SkipList {
 
     /// Approximate memory usage in bytes.
     pub fn size_bytes(&self) -> usize {
-        todo!("[M03]: Return tracked size")
+        self.size_bytes
     }
 
     /// Create an iterator over all entries in sorted order.
