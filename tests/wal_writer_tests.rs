@@ -9,7 +9,6 @@ use lsm_engine::wal::writer::WALWriter;
 // Test 1: Write one record, read file back
 // =============================================================================
 #[test]
-#[ignore]
 fn write_one_record_read_back() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.wal");
@@ -36,7 +35,6 @@ fn write_one_record_read_back() {
 // Test 2: Write multiple records in order
 // =============================================================================
 #[test]
-#[ignore]
 fn write_multiple_records_in_order() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.wal");
@@ -71,7 +69,6 @@ fn write_multiple_records_in_order() {
 // Test 3: Data survives reopen after sync
 // =============================================================================
 #[test]
-#[ignore]
 fn data_survives_reopen() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.wal");
@@ -97,7 +94,6 @@ fn data_survives_reopen() {
 // Test 4: Offset tracking matches expected size
 // =============================================================================
 #[test]
-#[ignore]
 fn offset_tracks_bytes_written() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.wal");
@@ -119,7 +115,6 @@ fn offset_tracks_bytes_written() {
 // Test 5: Write delete record
 // =============================================================================
 #[test]
-#[ignore]
 fn write_delete_record() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("test.wal");
