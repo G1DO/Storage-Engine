@@ -14,6 +14,7 @@ pub use record::{WALRecord, RecordType};
 ///   - EveryNMillis: bounded loss window, much higher throughput
 ///
 /// RocksDB defaults to NOT fsync'ing WAL (!), letting the OS decide.
+#[derive(Debug, Clone, Copy)]
 pub enum SyncPolicy {
     /// fsync after every record. Safest, slowest.
     EveryWrite,

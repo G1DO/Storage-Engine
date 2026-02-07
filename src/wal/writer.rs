@@ -95,26 +95,86 @@ impl WALWriter {
 /// CRITICAL INVARIANT: Old WAL is only deleted AFTER its SSTable is
 /// fully written and fsync'd. Violating this loses data.
 pub struct WALManager {
-    // TODO [M09]: Fields
-    //   - dir: PathBuf
-    //   - active_writer: WALWriter
-    //   - next_wal_id: u64
+    dir: std::path::PathBuf,
+    active_writer: WALWriter,
+    active_path: std::path::PathBuf,
+    next_wal_id: u64,
+    sync_policy: SyncPolicy,
 }
 
 impl WALManager {
     /// Create a WAL manager for the given directory.
-    pub fn new(_dir: &Path, _sync_policy: SyncPolicy) -> Result<Self> {
-        todo!("[M09]: Initialize, find existing WAL files")
+    ///
+    /// Scans for existing WAL files to determine the next ID,
+    /// then creates a new active WAL file.
+    pub fn new(dir: &Path, sync_policy: SyncPolicy) -> Result<Self> {
+        std::fs::create_dir_all(dir)?;
+
+        // Find the highest existing WAL ID so we don't collide
+        let max_id = Self::find_max_wal_id(dir);
+        let next_id = max_id + 1;
+
+        let active_path = dir.join(format!("{:06}.wal", next_id));
+        let active_writer = WALWriter::new(&active_path, sync_policy)?;
+
+        Ok(WALManager {
+            dir: dir.to_path_buf(),
+            active_writer,
+            active_path,
+            next_wal_id: next_id + 1,
+            sync_policy,
+        })
     }
 
-    /// Rotate: freeze current WAL, create a new one.
+    /// Rotate: sync current WAL, create a new one.
     /// Returns the path of the old WAL (caller deletes after SSTable flush).
     pub fn rotate(&mut self) -> Result<std::path::PathBuf> {
-        todo!("[M09]: Create new WAL file, swap active writer")
+        // Sync the current WAL before freezing it
+        self.active_writer.sync()?;
+
+        let old_path = self.active_path.clone();
+
+        // Create new WAL file
+        let new_path = self.dir.join(format!("{:06}.wal", self.next_wal_id));
+        let new_writer = WALWriter::new(&new_path, self.sync_policy)?;
+
+        self.active_writer = new_writer;
+        self.active_path = new_path;
+        self.next_wal_id += 1;
+
+        Ok(old_path)
     }
 
     /// Delete an old WAL file (safe only after SSTable is fsync'd).
-    pub fn delete_wal(_path: &Path) -> Result<()> {
-        todo!("[M09]: Remove file")
+    pub fn delete_wal(path: &Path) -> Result<()> {
+        std::fs::remove_file(path)?;
+        Ok(())
+    }
+
+    /// Access the active WAL writer for appending records.
+    pub fn active_writer(&mut self) -> &mut WALWriter {
+        &mut self.active_writer
+    }
+
+    /// Path of the current active WAL file.
+    pub fn active_path(&self) -> &Path {
+        &self.active_path
+    }
+
+    /// Scan directory for existing .wal files, return the highest ID found (0 if none).
+    fn find_max_wal_id(dir: &Path) -> u64 {
+        std::fs::read_dir(dir)
+            .ok()
+            .into_iter()
+            .flatten()
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let name = e.file_name();
+                let name = name.to_str()?;
+                let stem = name.strip_suffix(".wal")?;
+                stem.parse::<u64>().ok()
+            })
+            .max()
+            .unwrap_or(0)
     }
 }
