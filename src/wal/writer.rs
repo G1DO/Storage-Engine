@@ -83,6 +83,11 @@ impl WALWriter {
     pub fn offset(&self) -> u64 {
         self.offset
     }
+
+    /// Number of writes since the last fsync. Useful for testing sync policies.
+    pub fn writes_since_sync(&self) -> usize {
+        self.writes_since_sync
+    }
 }
 
 /// Manages WAL file rotation.
