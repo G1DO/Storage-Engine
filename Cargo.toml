@@ -12,6 +12,8 @@ rand = "0.8"
 # M06: crc32fast   — WAL record checksums
 crc32fast = "1.3"
 # M13: bytes       — efficient byte buffer manipulation
+# M16: xxhash-rust — fast 128-bit hashing for bloom filters
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
 # M22: crossbeam-channel — compaction scheduler communication
 
 [dev-dependencies]
