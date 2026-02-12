@@ -95,10 +95,8 @@ impl SSTableBuilder {
         }
 
         // Take the current block builder, replace with a fresh one
-        let old_builder = std::mem::replace(
-            &mut self.block_builder,
-            BlockBuilder::new(self.block_size),
-        );
+        let old_builder =
+            std::mem::replace(&mut self.block_builder, BlockBuilder::new(self.block_size));
         let block_data = old_builder.build();
         let block_size = block_data.len() as u64;
 
@@ -116,14 +114,44 @@ impl SSTableBuilder {
         Ok(())
     }
 
-    /// Finalize the SSTable: flush last block, write index block, footer, fsync.
+    /// Encode the SSTable metadata into bytes for the meta block.
+    /// Format: [id(8B)][level(4B)][min_key_len(4B)][min_key][max_key_len(4B)][max_key][entry_count(8B)]
+    fn encode_meta_block(&self) -> Vec<u8> {
+        let mut buf = Vec::new();
+
+        // id (8 bytes)
+        buf.extend_from_slice(&self.sst_id.to_le_bytes());
+
+        // level (4 bytes) - always 0 for newly built SSTables
+        buf.extend_from_slice(&0u32.to_le_bytes());
+
+        // min_key_len (4 bytes) + min_key
+        let min_key = self.min_key.as_ref().map(|k| k.as_slice()).unwrap_or(&[]);
+        buf.extend_from_slice(&(min_key.len() as u32).to_le_bytes());
+        buf.extend_from_slice(min_key);
+
+        // max_key_len (4 bytes) + max_key
+        let max_key = self.max_key.as_ref().map(|k| k.as_slice()).unwrap_or(&[]);
+        buf.extend_from_slice(&(max_key.len() as u32).to_le_bytes());
+        buf.extend_from_slice(max_key);
+
+        // entry_count (8 bytes)
+        buf.extend_from_slice(&self.entry_count.to_le_bytes());
+
+        buf
+    }
+
+    /// Finalize the SSTable: flush last block, write meta block, index block, footer, fsync.
     pub fn finish(mut self) -> Result<SSTableMeta> {
         // 1. Flush the last data block
         self.flush_block()?;
 
-        // 2. Meta block placeholder (bloom filter added in M18)
+        // 2. Write meta block with SSTable metadata
         let meta_block_offset = self.data_offset;
-        let meta_block_size = 0u64;
+        let meta_data = self.encode_meta_block();
+        let meta_block_size = meta_data.len() as u64;
+        self.writer.write_all(&meta_data)?;
+        self.data_offset += meta_block_size;
 
         // 3. Write index block: serialize all index entries sequentially
         let index_block_offset = self.data_offset;
@@ -148,7 +176,8 @@ impl SSTableBuilder {
         self.writer.flush()?;
         self.writer.get_ref().sync_all()?;
 
-        let file_size = index_block_offset + index_block_size + Footer::SIZE as u64;
+        let file_size =
+            meta_block_offset + meta_block_size + index_block_size + Footer::SIZE as u64;
 
         Ok(SSTableMeta {
             id: self.sst_id,
