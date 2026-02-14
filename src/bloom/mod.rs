@@ -94,13 +94,40 @@ impl BloomFilter {
     }
 
     /// Serialize the bloom filter to bytes (for writing into SSTable).
+    ///
+    /// Format (all little-endian):
+    ///   [num_hashes: u32][num_bits: u32][num_u64s: u32][bits: num_u64s × u64]
+    ///
+    /// Total size: 12 + (num_u64s * 8) bytes
     pub fn serialize(&self) -> Vec<u8> {
-        todo!("[M17]: Encode num_hashes, num_bits, bit array")
+        let num_u64s = self.bits.len() as u32;
+        let mut buf = Vec::with_capacity(12 + (num_u64s as usize) * 8);
+
+        buf.extend_from_slice(&self.num_hashes.to_le_bytes());
+        buf.extend_from_slice(&self.num_bits.to_le_bytes());
+        buf.extend_from_slice(&num_u64s.to_le_bytes());
+
+        for &word in &self.bits {
+            buf.extend_from_slice(&word.to_le_bytes());
+        }
+
+        buf
     }
 
     /// Deserialize a bloom filter from bytes (when opening an SSTable).
-    pub fn deserialize(_data: &[u8]) -> crate::error::Result<Self> {
-        todo!("[M17]: Decode num_hashes, num_bits, bit array")
+    ///
+    /// Must validate:
+    ///   1. Enough bytes for the 12-byte header
+    ///   2. num_u64s matches what num_bits requires: (num_bits + 63) / 64
+    ///   3. Remaining bytes == num_u64s * 8 (exact, no extra)
+    pub fn deserialize(data: &[u8]) -> crate::error::Result<Self> {
+        // TODO(human): Implement deserialization
+        // Read the 12-byte header (num_hashes, num_bits, num_u64s) as little-endian u32s
+        // Validate that the data length is exactly 12 + num_u64s * 8
+        // Validate that num_u64s == (num_bits + 63) / 64
+        // Read each u64 from the remaining bytes into a Vec<u64>
+        // Return BloomFilter { bits, num_hashes, num_bits }
+        todo!()
     }
 
     /// Get the number of hash functions used.
