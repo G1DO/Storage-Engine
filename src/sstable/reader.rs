@@ -3,6 +3,7 @@ use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
+use crate::bloom::BloomFilter;
 use crate::error::Result;
 use crate::sstable::block::reader::Block;
 use crate::sstable::footer::{Footer, IndexEntry, SSTableMeta};
@@ -28,6 +29,8 @@ pub struct SSTable {
     index: Vec<IndexEntry>,
     /// Metadata about this SSTable (min/max keys, entry count, etc.).
     meta: SSTableMeta,
+    /// Bloom filter loaded from disk — checked before any block reads.
+    bloom: BloomFilter,
     /// Footer with offsets to index and meta blocks.
     footer: Footer,
 }
@@ -70,6 +73,12 @@ impl SSTable {
             offset += consumed;
         }
 
+        // Read bloom filter block
+        file.seek(SeekFrom::Start(footer.bloom_block_offset))?;
+        let mut bloom_buf = vec![0u8; footer.bloom_block_size as usize];
+        file.read_exact(&mut bloom_buf)?;
+        let bloom = BloomFilter::deserialize(&bloom_buf)?;
+
         // Read meta block and parse SSTableMeta
         // Format: [id(8B)][level(4B)][min_key_len(4B)][min_key][max_key_len(4B)][max_key][entry_count(8B)]
         file.seek(SeekFrom::Start(footer.meta_block_offset))?;
@@ -96,6 +105,7 @@ impl SSTable {
             file: RefCell::new(file),
             index,
             meta,
+            bloom,
             footer,
         })
     }
@@ -181,7 +191,12 @@ impl SSTable {
             return Ok(None);
         }
 
-        // Step 2: Binary search the index to find the right block
+        // Step 2: Bloom filter check — if it says "no", key is definitely not here
+        if !self.bloom.may_contain(key) {
+            return Ok(None);
+        }
+
+        // Step 3: Binary search the index to find the right block
         // Index is sorted by last_key, so we find the first block where
         // last_key >= key (lower_bound)
         let block_idx = match self

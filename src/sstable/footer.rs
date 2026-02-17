@@ -72,6 +72,8 @@ impl IndexEntry {
 /// │ Index block size (8B)                │
 /// │ Meta block offset (8B)               │
 /// │ Meta block size (8B)                 │
+/// │ Bloom block offset (8B)              │
+/// │ Bloom block size (8B)                │
 /// │ Magic number (8B)                    │
 /// └──────────────────────────────────────┘
 /// ```
@@ -81,12 +83,14 @@ pub struct Footer {
     pub index_block_size: u64,
     pub meta_block_offset: u64,
     pub meta_block_size: u64,
+    pub bloom_block_offset: u64,
+    pub bloom_block_size: u64,
     pub magic: u64,
 }
 
 impl Footer {
     /// Size of the footer in bytes (fixed).
-    pub const SIZE: usize = 8 * 5; // 40 bytes
+    pub const SIZE: usize = 8 * 7; // 56 bytes
 
     /// Encode footer to bytes.
     pub fn encode(&self) -> Vec<u8> {
@@ -95,6 +99,8 @@ impl Footer {
         buf.extend_from_slice(&self.index_block_size.to_le_bytes());
         buf.extend_from_slice(&self.meta_block_offset.to_le_bytes());
         buf.extend_from_slice(&self.meta_block_size.to_le_bytes());
+        buf.extend_from_slice(&self.bloom_block_offset.to_le_bytes());
+        buf.extend_from_slice(&self.bloom_block_size.to_le_bytes());
         buf.extend_from_slice(&self.magic.to_le_bytes());
         buf
     }
@@ -110,7 +116,9 @@ impl Footer {
         let index_block_size = u64::from_le_bytes(data[8..16].try_into().unwrap());
         let meta_block_offset = u64::from_le_bytes(data[16..24].try_into().unwrap());
         let meta_block_size = u64::from_le_bytes(data[24..32].try_into().unwrap());
-        let magic = u64::from_le_bytes(data[32..40].try_into().unwrap());
+        let bloom_block_offset = u64::from_le_bytes(data[32..40].try_into().unwrap());
+        let bloom_block_size = u64::from_le_bytes(data[40..48].try_into().unwrap());
+        let magic = u64::from_le_bytes(data[48..56].try_into().unwrap());
 
         if magic != SSTABLE_MAGIC {
             return Err(crate::error::Error::Corruption(format!(
@@ -124,6 +132,8 @@ impl Footer {
             index_block_size,
             meta_block_offset,
             meta_block_size,
+            bloom_block_offset,
+            bloom_block_size,
             magic,
         })
     }
@@ -140,6 +150,8 @@ mod tests {
             index_block_size: 512,
             meta_block_offset: 0,
             meta_block_size: 0,
+            bloom_block_offset: 2048,
+            bloom_block_size: 256,
             magic: SSTABLE_MAGIC,
         };
         let encoded = footer.encode();
@@ -149,6 +161,8 @@ mod tests {
         assert_eq!(decoded.index_block_size, 512);
         assert_eq!(decoded.meta_block_offset, 0);
         assert_eq!(decoded.meta_block_size, 0);
+        assert_eq!(decoded.bloom_block_offset, 2048);
+        assert_eq!(decoded.bloom_block_size, 256);
         assert_eq!(decoded.magic, SSTABLE_MAGIC);
     }
 
@@ -159,11 +173,13 @@ mod tests {
             index_block_size: 0,
             meta_block_offset: 0,
             meta_block_size: 0,
+            bloom_block_offset: 0,
+            bloom_block_size: 0,
             magic: SSTABLE_MAGIC,
         }
         .encode();
         // Corrupt the magic
-        encoded[32] = 0xFF;
+        encoded[48] = 0xFF;
         assert!(Footer::decode(&encoded).is_err());
     }
 

@@ -89,6 +89,9 @@ impl SSTableBuilder {
         self.max_key = Some(key.to_vec());
         self.entry_count += 1;
 
+        // Add key to bloom filter for later serialization
+        self.bloom_builder.add_key(key);
+
         // Try adding to current block
         if self.block_builder.add(key, value) {
             self.last_key_in_block = Some(key.to_vec());
@@ -170,7 +173,15 @@ impl SSTableBuilder {
         self.writer.write_all(&meta_data)?;
         self.data_offset += meta_block_size;
 
-        // 3. Write index block: serialize all index entries sequentially
+        // 3. Write bloom filter block
+        let bloom_block_offset = self.data_offset;
+        let bloom = self.bloom_builder.build();
+        let bloom_data = bloom.serialize();
+        let bloom_block_size = bloom_data.len() as u64;
+        self.writer.write_all(&bloom_data)?;
+        self.data_offset += bloom_block_size;
+
+        // 4. Write index block: serialize all index entries sequentially
         let index_block_offset = self.data_offset;
         let mut index_data = Vec::new();
         for entry in &self.index_entries {
@@ -179,22 +190,24 @@ impl SSTableBuilder {
         let index_block_size = index_data.len() as u64;
         self.writer.write_all(&index_data)?;
 
-        // 4. Write footer
+        // 5. Write footer
         let footer = Footer {
             index_block_offset,
             index_block_size,
             meta_block_offset,
             meta_block_size,
+            bloom_block_offset,
+            bloom_block_size,
             magic: SSTABLE_MAGIC,
         };
         self.writer.write_all(&footer.encode())?;
 
-        // 5. Flush buffer + fsync to guarantee durability
+        // 6. Flush buffer + fsync to guarantee durability
         self.writer.flush()?;
         self.writer.get_ref().sync_all()?;
 
         let file_size =
-            meta_block_offset + meta_block_size + index_block_size + Footer::SIZE as u64;
+            meta_block_offset + meta_block_size + bloom_block_size + index_block_size + Footer::SIZE as u64;
 
         Ok(SSTableMeta {
             id: self.sst_id,
