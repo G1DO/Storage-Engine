@@ -121,13 +121,48 @@ impl BloomFilter {
     ///   2. num_u64s matches what num_bits requires: (num_bits + 63) / 64
     ///   3. Remaining bytes == num_u64s * 8 (exact, no extra)
     pub fn deserialize(data: &[u8]) -> crate::error::Result<Self> {
-        // TODO(human): Implement deserialization
-        // Read the 12-byte header (num_hashes, num_bits, num_u64s) as little-endian u32s
-        // Validate that the data length is exactly 12 + num_u64s * 8
-        // Validate that num_u64s == (num_bits + 63) / 64
-        // Read each u64 from the remaining bytes into a Vec<u64>
-        // Return BloomFilter { bits, num_hashes, num_bits }
-        todo!()
+        use crate::error::Error;
+
+        if data.len() < 12 {
+            return Err(Error::Corruption("bloom filter too short for header".into()));
+        }
+
+        let num_hashes = u32::from_le_bytes(data[0..4].try_into().unwrap());
+        let num_bits = u32::from_le_bytes(data[4..8].try_into().unwrap());
+        let num_u64s = u32::from_le_bytes(data[8..12].try_into().unwrap());
+
+        // Validate num_u64s matches num_bits
+        let expected_u64s = ((num_bits as usize) + 63) / 64;
+        if num_u64s as usize != expected_u64s {
+            return Err(Error::Corruption(format!(
+                "bloom filter num_u64s mismatch: got {}, expected {}",
+                num_u64s, expected_u64s
+            )));
+        }
+
+        // Validate total length
+        let expected_len = 12 + (num_u64s as usize) * 8;
+        if data.len() != expected_len {
+            return Err(Error::Corruption(format!(
+                "bloom filter data length mismatch: got {}, expected {}",
+                data.len(),
+                expected_len
+            )));
+        }
+
+        // Read bit array
+        let mut bits = Vec::with_capacity(num_u64s as usize);
+        for i in 0..num_u64s as usize {
+            let start = 12 + i * 8;
+            let word = u64::from_le_bytes(data[start..start + 8].try_into().unwrap());
+            bits.push(word);
+        }
+
+        Ok(Self {
+            bits,
+            num_hashes,
+            num_bits,
+        })
     }
 
     /// Get the number of hash functions used.
