@@ -216,16 +216,26 @@ impl SSTable {
 
     /// Create an iterator over all entries in the SSTable.
     pub fn iter(&self) -> Result<SSTableIterator> {
-        todo!("[M15]: Create iterator starting at first block")
+        SSTableIterator::new(self)
     }
 
     /// Create an iterator over entries in [start, end).
-    pub fn range_iter(&self, _start: &[u8], _end: &[u8]) -> Result<SSTableIterator> {
-        todo!("[M15]: Seek to start key, stop at end key")
+    pub fn range_iter(&self, start: &[u8], end: &[u8]) -> Result<SSTableIterator> {
+        SSTableIterator::new_range(self, start, end)
     }
 
     /// Get metadata about this SSTable.
     pub fn meta(&self) -> &SSTableMeta {
         &self.meta
+    }
+
+    /// Get the index entries.
+    pub(crate) fn index(&self) -> &[IndexEntry] {
+        &self.index
+    }
+
+    /// Get the file handle.
+    pub(crate) fn file(&self) -> &RefCell<File> {
+        &self.file
     }
 }
