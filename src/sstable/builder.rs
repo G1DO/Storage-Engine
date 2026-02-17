@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::Path;
 
+use crate::bloom::builder::BloomFilterBuilder;
 use crate::error::Result;
 use crate::sstable::block::builder::BlockBuilder;
 use crate::sstable::footer::{Footer, IndexEntry, SSTableMeta, SSTABLE_MAGIC};
@@ -37,11 +38,26 @@ pub struct SSTableBuilder {
     entry_count: u64,
     /// Last key added to the current block (needed for index entry).
     last_key_in_block: Option<Vec<u8>>,
+    /// Bloom filter builder — every key added to the SSTable is also inserted here.
+    bloom_builder: BloomFilterBuilder,
 }
 
 impl SSTableBuilder {
     /// Create a new SSTable builder that writes to the given path.
+    /// Default false positive rate for the bloom filter (1%).
+    const DEFAULT_FPR: f64 = 0.01;
+
     pub fn new(path: &Path, sst_id: u64, block_size: usize) -> Result<Self> {
+        Self::with_estimated_keys(path, sst_id, block_size, 1000)
+    }
+
+    /// Create a new SSTable builder with an estimated key count for bloom filter sizing.
+    pub fn with_estimated_keys(
+        path: &Path,
+        sst_id: u64,
+        block_size: usize,
+        estimated_keys: usize,
+    ) -> Result<Self> {
         let file = File::create(path)?;
         let writer = BufWriter::new(file);
         Ok(SSTableBuilder {
@@ -55,6 +71,7 @@ impl SSTableBuilder {
             max_key: None,
             entry_count: 0,
             last_key_in_block: None,
+            bloom_builder: BloomFilterBuilder::new(estimated_keys.max(1), Self::DEFAULT_FPR),
         })
     }
 

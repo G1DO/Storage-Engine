@@ -5,14 +5,14 @@
 ///
 /// On-disk layout of a block:
 /// ```text
-/// ┌────────────────────────────────────────────┐
-/// │ Entry 0: [key_len(2B)][val_len(2B)][key][value] │
-/// │ Entry 1: ...                                │
-/// │ Entry N: ...                                │
-/// ├────────────────────────────────────────────┤
+/// ┌────────────────────────────────────────────────────┐
+/// │ Entry 0: [key_len(2B)][val_len(2B)][key][value]    │
+/// │ Entry 1: ...                                       │
+/// │ Entry N: ...                                       │
+/// ├────────────────────────────────────────────────────┤
 /// │ Offset array: [off_0(2B)][off_1(2B)]...[off_N(2B)] │
-/// │ Num entries (2B)                            │
-/// └────────────────────────────────────────────┘
+/// │ Num entries (2B)                                   │
+/// └────────────────────────────────────────────────────┘
 /// ```
 ///
 /// The offset array at the end enables binary search without parsing
@@ -49,11 +49,11 @@ impl BlockBuilder {
         // Record offset of this entry
         self.offsets.push(self.data.len() as u16);
 
-        // Serialize: key_len (2B) | val_len (2B) | key | value
-        self.data.extend_from_slice(&(key.len() as u16).to_le_bytes());
-        self.data.extend_from_slice(&(value.len() as u16).to_le_bytes());
-        self.data.extend_from_slice(key);
-        self.data.extend_from_slice(value);
+            // Serialize: key_len (2B) | val_len (2B) | key | value
+            self.data.extend_from_slice(&(key.len() as u16).to_le_bytes());
+            self.data.extend_from_slice(&(value.len() as u16).to_le_bytes());
+            self.data.extend_from_slice(key);
+            self.data.extend_from_slice(value);
 
         true
     }
