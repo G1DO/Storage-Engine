@@ -1,8 +1,6 @@
 use crate::compaction::{CompactionStrategy, CompactionTask};
 use crate::sstable::footer::SSTableMeta;
 
-// TODO [M20]: Implement size-tiered compaction
-
 /// Size-tiered compaction strategy.
 ///
 /// Trigger: Level 0 has >= threshold SSTables (e.g., 4).
@@ -10,24 +8,64 @@ use crate::sstable::footer::SSTableMeta;
 /// Action:
 ///   1. Pick all Level 0 SSTables
 ///   2. Find overlapping SSTables in Level 1
-///   3. Merge-sort all of them together
+///   3. Merge-sort all of them together (done by caller, not here)
 ///   4. Write new SSTables to Level 1
 ///   5. Delete old SSTables
-///
-/// Simpler than leveled. Good first implementation.
 pub struct SizeTieredStrategy {
-    // TODO [M20]: Fields
-    //   - level0_threshold: usize (how many L0 SSTables trigger compaction)
+    /// How many L0 SSTables trigger a compaction.
+    level0_threshold: usize,
 }
 
 impl SizeTieredStrategy {
-    pub fn new(_level0_threshold: usize) -> Self {
-        todo!("[M20]: Initialize")
+    pub fn new(level0_threshold: usize) -> Self {
+        Self { level0_threshold }
     }
 }
 
 impl CompactionStrategy for SizeTieredStrategy {
-    fn pick_compaction(&self, _levels: &[Vec<SSTableMeta>]) -> Option<CompactionTask> {
-        todo!("[M20]: Check L0 count, find overlapping L1 SSTables")
+    fn pick_compaction(&self, levels: &[Vec<SSTableMeta>]) -> Option<CompactionTask> {
+        // No levels or empty L0 → nothing to do.
+        if levels.is_empty() || levels[0].len() < self.level0_threshold {
+            return None;
+        }
+
+        let l0 = &levels[0];
+
+        // Compute overall key range across ALL L0 SSTables.
+        // Since L0 SSTables can have overlapping ranges, we need the
+        // union: the smallest min_key and the largest max_key.
+        let overall_min = l0.iter().map(|s| s.min_key.as_slice()).min().unwrap();
+        let overall_max = l0.iter().map(|s| s.max_key.as_slice()).max().unwrap();
+
+        // Start with all L0 SSTables as inputs.
+        let mut inputs: Vec<SSTableMeta> = l0.clone();
+
+        // Find overlapping L1 SSTables (if L1 exists).
+        if levels.len() > 1 {
+            let l1_overlapping =
+                find_overlapping_sstables(&levels[1], overall_min, overall_max);
+            inputs.extend(l1_overlapping);
+        }
+
+        Some(CompactionTask {
+            inputs,
+            output_level: 1,
+        })
     }
+}
+
+/// Given a slice of SSTables and a key range [range_min, range_max],
+/// return all SSTables whose key range overlaps with the given range.
+///
+/// Two ranges overlap when: range_min <= sst.max_key AND sst.min_key <= range_max
+fn find_overlapping_sstables(
+    sstables: &[SSTableMeta],
+    range_min: &[u8],
+    range_max: &[u8],
+) -> Vec<SSTableMeta> {
+    sstables
+        .iter()
+        .filter(|sst| range_min <= sst.max_key.as_slice() && sst.min_key.as_slice() <= range_max)
+        .cloned()
+        .collect()
 }
