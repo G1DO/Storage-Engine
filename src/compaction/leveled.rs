@@ -1,4 +1,4 @@
-use crate::compaction::{CompactionStrategy, CompactionTask};
+use crate::compaction::{find_overlapping_sstables, CompactionStrategy, CompactionTask};
 use crate::sstable::footer::SSTableMeta;
 
 // TODO [M21]: Implement leveled compaction
@@ -16,20 +16,53 @@ use crate::sstable::footer::SSTableMeta;
 /// Key invariant: within Level 1+, no two SSTables have overlapping
 /// key ranges. A point lookup checks at most ONE SSTable per level.
 pub struct LeveledStrategy {
-    // TODO [M21]: Fields
-    //   - level_size_multiplier: usize (default 10)
-    //   - base_level_size: usize (Level 1 target size)
-    //   - max_levels: usize
+    level_size_multiplier: usize,
+    base_level_size: usize,
+    max_levels: usize,
 }
 
 impl LeveledStrategy {
-    pub fn new(_base_level_size: usize, _multiplier: usize, _max_levels: usize) -> Self {
-        todo!("[M21]: Initialize level size targets")
+    pub fn new(base_level_size: usize, multiplier: usize, max_levels: usize) -> Self {
+        Self {
+            level_size_multiplier: multiplier,
+            base_level_size,
+            max_levels,
+        }
     }
 }
 
 impl CompactionStrategy for LeveledStrategy {
-    fn pick_compaction(&self, _levels: &[Vec<SSTableMeta>]) -> Option<CompactionTask> {
-        todo!("[M21]: Find level over budget, pick SSTable, find overlapping next-level")
+    fn pick_compaction(&self, levels: &[Vec<SSTableMeta>]) -> Option<CompactionTask> {
+        let mut budget = self.base_level_size as u64;
+
+        for level_idx in 1..self.max_levels {
+            if let Some(level_ssts) = levels.get(level_idx) {
+                let total_size: u64 = level_ssts.iter().map(|sst| sst.file_size).sum();
+
+                let next_level = level_idx + 1;
+                if total_size > budget && next_level < self.max_levels {
+                    let picked = &level_ssts[0];
+                    let mut inputs = vec![picked.clone()];
+
+                    if let Some(next_ssts) = levels.get(next_level) {
+                        let overlapping = find_overlapping_sstables(
+                            next_ssts,
+                            &picked.min_key,
+                            &picked.max_key,
+                        );
+                        inputs.extend(overlapping);
+                    }
+
+                    return Some(CompactionTask {
+                        inputs,
+                        output_level: next_level as u32,
+                    });
+                }
+            }
+
+            budget *= self.level_size_multiplier as u64;
+        }
+
+        None
     }
 }

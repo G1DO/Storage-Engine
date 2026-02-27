@@ -1,4 +1,4 @@
-use crate::compaction::{CompactionStrategy, CompactionTask};
+use crate::compaction::{find_overlapping_sstables, CompactionStrategy, CompactionTask};
 use crate::sstable::footer::SSTableMeta;
 
 /// Size-tiered compaction strategy.
@@ -54,18 +54,3 @@ impl CompactionStrategy for SizeTieredStrategy {
     }
 }
 
-/// Given a slice of SSTables and a key range [range_min, range_max],
-/// return all SSTables whose key range overlaps with the given range.
-///
-/// Two ranges overlap when: range_min <= sst.max_key AND sst.min_key <= range_max
-fn find_overlapping_sstables(
-    sstables: &[SSTableMeta],
-    range_min: &[u8],
-    range_max: &[u8],
-) -> Vec<SSTableMeta> {
-    sstables
-        .iter()
-        .filter(|sst| range_min <= sst.max_key.as_slice() && sst.min_key.as_slice() <= range_max)
-        .cloned()
-        .collect()
-}
