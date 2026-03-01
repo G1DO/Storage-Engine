@@ -179,3 +179,122 @@ fn test_binary_keys() {
     assert!(bf.may_contain(&key1));
     assert!(!bf.may_contain(&key2));
 }
+
+// ── M17: Serialization tests ──────────────────────────────────────
+
+#[test]
+fn test_serialize_deserialize_roundtrip() {
+    let mut bf = BloomFilter::new(100, 0.01);
+    bf.insert(b"apple");
+    bf.insert(b"banana");
+    bf.insert(b"cherry");
+
+    let serialized = bf.serialize();
+    let deserialized = BloomFilter::deserialize(&serialized).unwrap();
+
+    assert_eq!(deserialized.num_hashes(), bf.num_hashes());
+    assert_eq!(deserialized.num_bits(), bf.num_bits());
+
+    assert!(deserialized.may_contain(b"apple"));
+    assert!(deserialized.may_contain(b"banana"));
+    assert!(deserialized.may_contain(b"cherry"));
+    assert!(!deserialized.may_contain(b"date"));
+    assert!(!deserialized.may_contain(b"elderberry"));
+}
+
+#[test]
+fn test_serialize_deserialize_empty_filter() {
+    let bf = BloomFilter::new(100, 0.01);
+
+    let serialized = bf.serialize();
+    let deserialized = BloomFilter::deserialize(&serialized).unwrap();
+
+    assert_eq!(deserialized.num_hashes(), bf.num_hashes());
+    assert_eq!(deserialized.num_bits(), bf.num_bits());
+    assert!(!deserialized.may_contain(b"anything"));
+}
+
+#[test]
+fn test_deserialize_corrupted_data() {
+    let mut bf = BloomFilter::new(100, 0.01);
+    bf.insert(b"key");
+
+    let mut serialized = bf.serialize();
+
+    // Corrupt a byte in the bits array
+    if serialized.len() > 20 {
+        serialized[20] ^= 0xFF;
+    }
+
+    let result = BloomFilter::deserialize(&serialized);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_deserialize_truncated_data() {
+    let mut bf = BloomFilter::new(100, 0.01);
+    bf.insert(b"key");
+
+    let serialized = bf.serialize();
+    let truncated = &serialized[..serialized.len() / 2];
+
+    let result = BloomFilter::deserialize(truncated);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_deserialize_too_short() {
+    let result = BloomFilter::deserialize(&[0u8; 10]);
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_serialize_deterministic() {
+    let mut bf = BloomFilter::new(100, 0.01);
+    bf.insert(b"key1");
+    bf.insert(b"key2");
+
+    let serialized1 = bf.serialize();
+    let serialized2 = bf.serialize();
+
+    assert_eq!(serialized1, serialized2);
+}
+
+#[test]
+fn test_serialize_deserialize_large_filter() {
+    let n = 10_000;
+    let mut bf = BloomFilter::new(n, 0.01);
+
+    for i in 0..n {
+        let key = format!("key_{}", i);
+        bf.insert(key.as_bytes());
+    }
+
+    let serialized = bf.serialize();
+    let deserialized = BloomFilter::deserialize(&serialized).unwrap();
+
+    // All inserted keys must still be found
+    for i in 0..n {
+        let key = format!("key_{}", i);
+        assert!(
+            deserialized.may_contain(key.as_bytes()),
+            "key_{} not found after deserialization",
+            i
+        );
+    }
+}
+
+#[test]
+fn test_serialize_deserialize_various_sizes() {
+    for &fpr in &[0.10, 0.01, 0.001] {
+        let mut bf = BloomFilter::new(500, fpr);
+        bf.insert(b"test_key");
+
+        let serialized = bf.serialize();
+        let deserialized = BloomFilter::deserialize(&serialized).unwrap();
+
+        assert_eq!(deserialized.num_hashes(), bf.num_hashes());
+        assert_eq!(deserialized.num_bits(), bf.num_bits());
+        assert!(deserialized.may_contain(b"test_key"));
+    }
+}

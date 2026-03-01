@@ -94,13 +94,100 @@ impl BloomFilter {
     }
 
     /// Serialize the bloom filter to bytes (for writing into SSTable).
+    ///
+    /// Format: [CRC32(4B)][num_hashes(4B)][num_bits(4B)][bits_count(4B)][bits(8B each)]
+    /// CRC covers everything after the checksum field.
     pub fn serialize(&self) -> Vec<u8> {
-        todo!("[M17]: Encode num_hashes, num_bits, bit array")
+        let bits_count = self.bits.len() as u32;
+        let total_size = 16 + self.bits.len() * 8;
+        let mut buf = Vec::with_capacity(total_size);
+
+        // Reserve space for CRC (fill at the end)
+        buf.extend_from_slice(&[0u8; 4]);
+
+        // Header fields
+        buf.extend_from_slice(&self.num_hashes.to_le_bytes());
+        buf.extend_from_slice(&self.num_bits.to_le_bytes());
+        buf.extend_from_slice(&bits_count.to_le_bytes());
+
+        // Bit array
+        for &word in &self.bits {
+            buf.extend_from_slice(&word.to_le_bytes());
+        }
+
+        // Compute CRC over everything after the checksum field
+        let crc = crc32fast::hash(&buf[4..]);
+        buf[0..4].copy_from_slice(&crc.to_le_bytes());
+
+        buf
     }
 
     /// Deserialize a bloom filter from bytes (when opening an SSTable).
-    pub fn deserialize(_data: &[u8]) -> crate::error::Result<Self> {
-        todo!("[M17]: Decode num_hashes, num_bits, bit array")
+    ///
+    /// Validates CRC, field consistency, and constructor invariants.
+    pub fn deserialize(data: &[u8]) -> crate::error::Result<Self> {
+        use crate::error::Error;
+
+        // Minimum: 4 (CRC) + 4 (num_hashes) + 4 (num_bits) + 4 (bits_count) = 16
+        if data.len() < 16 {
+            return Err(Error::Corruption("bloom filter data too short".into()));
+        }
+
+        // Verify CRC
+        let stored_crc = u32::from_le_bytes(data[0..4].try_into().unwrap());
+        let computed_crc = crc32fast::hash(&data[4..]);
+        if stored_crc != computed_crc {
+            return Err(Error::Corruption("bloom filter CRC mismatch".into()));
+        }
+
+        // Read header
+        let num_hashes = u32::from_le_bytes(data[4..8].try_into().unwrap());
+        let num_bits = u32::from_le_bytes(data[8..12].try_into().unwrap());
+        let bits_count = u32::from_le_bytes(data[12..16].try_into().unwrap()) as usize;
+
+        // Cross-check bits_count against num_bits
+        let expected_bits_count = (num_bits as usize).div_ceil(64);
+        if bits_count != expected_bits_count {
+            return Err(Error::Corruption(format!(
+                "bloom filter bits_count mismatch: got {}, expected {}",
+                bits_count, expected_bits_count
+            )));
+        }
+
+        // Validate data length
+        let expected_len = 16 + bits_count * 8;
+        if data.len() < expected_len {
+            return Err(Error::Corruption(format!(
+                "bloom filter data truncated: got {} bytes, expected {}",
+                data.len(),
+                expected_len
+            )));
+        }
+
+        // Enforce constructor invariants
+        if num_hashes == 0 {
+            return Err(Error::Corruption("bloom filter num_hashes is 0".into()));
+        }
+        if num_bits < 64 {
+            return Err(Error::Corruption(format!(
+                "bloom filter num_bits too small: {}",
+                num_bits
+            )));
+        }
+
+        // Read bit array
+        let mut bits = Vec::with_capacity(bits_count);
+        for i in 0..bits_count {
+            let offset = 16 + i * 8;
+            let word = u64::from_le_bytes(data[offset..offset + 8].try_into().unwrap());
+            bits.push(word);
+        }
+
+        Ok(BloomFilter {
+            bits,
+            num_hashes,
+            num_bits,
+        })
     }
 
     /// Get the number of hash functions used.
