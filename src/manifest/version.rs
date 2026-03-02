@@ -1,3 +1,6 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, RwLock};
+
 use crate::sstable::footer::SSTableMeta;
 
 // TODO [M27]: Implement Version
@@ -16,46 +19,51 @@ pub struct Version {
 
 impl Version {
     /// Create an empty version with the given number of levels.
-    pub fn new(_num_levels: usize) -> Self {
-        todo!("[M27]: Initialize empty level vectors")
+    // TODO(human): Implement these three methods
+    // new: create Self with `levels` being a vec of `num_levels` empty Vecs
+    // level: return &self.levels[level]
+    // total_sstables: sum the len() of each level
+    pub fn new(num_levels: usize) -> Self {
+        Self { levels: vec![Vec::new(); num_levels] }
     }
 
-    /// Get SSTables at a specific level.
-    pub fn level(&self, _level: usize) -> &[SSTableMeta] {
-        todo!("[M27]: Return &self.levels[level]")
+    pub fn level(&self, level: usize) -> &[SSTableMeta] {
+        &self.levels[level]
     }
 
-    /// Total number of SSTables across all levels.
     pub fn total_sstables(&self) -> usize {
-        todo!("[M27]: Sum across all levels")
+        self.levels.iter().map(|l| l.len()).sum()
     }
 }
 
 /// Manages version transitions. Tracks current version and allows
 /// atomic swaps when compaction completes.
+///
+/// Shared across threads via Arc<VersionSet>.
+/// - Readers call current() to get the RwLock, then .read() it
+/// - Compaction calls install() which .write()-locks and swaps the version
 pub struct VersionSet {
-    // TODO [M28]: Fields
-    //   - current: Arc<Version>
-    //   - next_sst_id: u64
+    current: Arc<RwLock<Version>>,
+    next_sst_id: AtomicU64,
 }
 
 impl VersionSet {
-    pub fn new(_num_levels: usize) -> Self {
-        todo!("[M28]: Initialize with empty version")
+    pub fn new(num_levels: usize) -> Self {
+        Self {
+            current: Arc::new(RwLock::new(Version::new(num_levels))),
+            next_sst_id: AtomicU64::new(1),
+        }
     }
 
-    /// Install a new version (after compaction or flush).
-    pub fn install(&mut self, _new_version: Version) {
-        todo!("[M28]: Atomically swap current version")
+    pub fn install(&self, new_version: Version) {
+        *self.current.write().unwrap() = new_version;
     }
 
-    /// Get a reference to the current version (for reads/snapshots).
-    pub fn current(&self) -> &Version {
-        todo!("[M28]: Return current version reference")
+    pub fn current(&self) -> Arc<RwLock<Version>> {
+        Arc::clone(&self.current)
     }
 
-    /// Allocate the next SSTable ID.
-    pub fn next_sst_id(&mut self) -> u64 {
-        todo!("[M28]: Increment and return")
+    pub fn next_sst_id(&self) -> u64 {
+        self.next_sst_id.fetch_add(1, Ordering::SeqCst)
     }
 }

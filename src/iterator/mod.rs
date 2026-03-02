@@ -1,4 +1,5 @@
 pub mod merge;
+pub mod vec_iter;
 
 use crate::error::Result;
 

@@ -35,7 +35,7 @@ pub struct CompactionTask {
 }
 
 /// Trait for compaction strategy implementations.
-pub trait CompactionStrategy {
+pub trait CompactionStrategy: Send + Sync {
     /// Decide if compaction is needed and which SSTables to compact.
     /// Returns None if no compaction needed.
     fn pick_compaction(&self, levels: &[Vec<SSTableMeta>]) -> Option<CompactionTask>;
