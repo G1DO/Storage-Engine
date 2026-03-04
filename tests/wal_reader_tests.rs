@@ -1,11 +1,11 @@
 // M08: WAL Reader tests
 // Tests for reading WAL records back for crash recovery.
 
-use std::io::Write;
-use lsm_engine::wal::{WALRecord, RecordType};
-use lsm_engine::wal::writer::WALWriter;
-use lsm_engine::wal::reader::WALReader;
 use lsm_engine::wal::SyncPolicy;
+use lsm_engine::wal::reader::WALReader;
+use lsm_engine::wal::writer::WALWriter;
+use lsm_engine::wal::{RecordType, WALRecord};
+use std::io::Write;
 
 /// Helper: write N put records to a WAL file, return the path.
 fn write_test_wal(dir: &tempfile::TempDir, count: usize) -> std::path::PathBuf {
@@ -32,10 +32,10 @@ fn read_all_records_back() {
     let records: Vec<WALRecord> = reader.iter().map(|r| r.unwrap()).collect();
 
     assert_eq!(records.len(), 5);
-    for i in 0..5 {
-        assert_eq!(records[i].record_type, RecordType::Put);
-        assert_eq!(records[i].key, format!("key{}", i).as_bytes());
-        assert_eq!(records[i].value, format!("val{}", i).as_bytes());
+    for (i, record) in records.iter().enumerate() {
+        assert_eq!(record.record_type, RecordType::Put);
+        assert_eq!(record.key, format!("key{}", i).as_bytes());
+        assert_eq!(record.value, format!("val{}", i).as_bytes());
     }
 }
 
@@ -50,18 +50,15 @@ fn truncated_last_record_yields_preceding() {
     // Chop off last few bytes to simulate crash mid-write
     let file_len = std::fs::metadata(&path).unwrap().len();
     let truncated_len = file_len - 3; // remove 3 bytes from end
-    let file = std::fs::OpenOptions::new()
-        .write(true)
-        .open(&path)
-        .unwrap();
+    let file = std::fs::OpenOptions::new().write(true).open(&path).unwrap();
     file.set_len(truncated_len).unwrap();
 
     let reader = WALReader::new(&path).unwrap();
     let records: Vec<WALRecord> = reader.iter().map(|r| r.unwrap()).collect();
 
     assert_eq!(records.len(), 4);
-    for i in 0..4 {
-        assert_eq!(records[i].key, format!("key{}", i).as_bytes());
+    for (i, record) in records.iter().enumerate() {
+        assert_eq!(record.key, format!("key{}", i).as_bytes());
     }
 }
 
@@ -92,9 +89,9 @@ fn corrupt_crc_stops_iteration() {
     let records: Vec<WALRecord> = reader.iter().map(|r| r.unwrap()).collect();
 
     assert_eq!(records.len(), 2);
-    for i in 0..2 {
-        assert_eq!(records[i].key, format!("key{}", i).as_bytes());
-        assert_eq!(records[i].value, format!("val{}", i).as_bytes());
+    for (i, record) in records.iter().enumerate() {
+        assert_eq!(record.key, format!("key{}", i).as_bytes());
+        assert_eq!(record.value, format!("val{}", i).as_bytes());
     }
 }
 

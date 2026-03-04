@@ -3,8 +3,8 @@ use std::io::{BufWriter, Write};
 use std::path::Path;
 
 use crate::error::Result;
-use crate::wal::record::WALRecord;
 use crate::wal::SyncPolicy;
+use crate::wal::record::WALRecord;
 
 // TODO [M07]: Implement WAL writer with fsync
 // TODO [M09]: Implement WAL rotation on memtable flush
@@ -28,10 +28,7 @@ pub struct WALWriter {
 impl WALWriter {
     /// Create a new WAL writer at the given path.
     pub fn new(path: &Path, sync_policy: SyncPolicy) -> Result<Self> {
-        let file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)?;
+        let file = OpenOptions::new().create(true).append(true).open(path)?;
 
         Ok(WALWriter {
             writer: BufWriter::new(file),
