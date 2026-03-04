@@ -1,10 +1,10 @@
 // M09: WAL Rotation tests
 // Tests for WAL file rotation on memtable flush.
 
+use lsm_engine::wal::SyncPolicy;
 use lsm_engine::wal::WALRecord;
 use lsm_engine::wal::reader::WALReader;
 use lsm_engine::wal::writer::WALManager;
-use lsm_engine::wal::SyncPolicy;
 
 // =============================================================================
 // Test 1: Rotate creates a new WAL file, old one still exists
@@ -18,7 +18,7 @@ fn rotate_creates_new_wal_old_still_exists() {
     let wal_files: Vec<_> = std::fs::read_dir(dir.path())
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "wal"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "wal"))
         .collect();
     assert_eq!(wal_files.len(), 1);
 
@@ -30,7 +30,7 @@ fn rotate_creates_new_wal_old_still_exists() {
     let wal_files: Vec<_> = std::fs::read_dir(dir.path())
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "wal"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "wal"))
         .collect();
     assert_eq!(wal_files.len(), 2);
 }
@@ -104,7 +104,7 @@ fn multiple_rotations_correct_file_count() {
     let wal_count = std::fs::read_dir(dir.path())
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "wal"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "wal"))
         .count();
     assert_eq!(wal_count, 4);
 
@@ -115,7 +115,7 @@ fn multiple_rotations_correct_file_count() {
     let wal_count = std::fs::read_dir(dir.path())
         .unwrap()
         .filter_map(|e| e.ok())
-        .filter(|e| e.path().extension().map_or(false, |ext| ext == "wal"))
+        .filter(|e| e.path().extension().is_some_and(|ext| ext == "wal"))
         .count();
     assert_eq!(wal_count, 2);
 }

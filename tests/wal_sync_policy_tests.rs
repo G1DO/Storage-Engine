@@ -1,13 +1,16 @@
 // M10: Configurable SyncPolicy tests
 // Tests that each sync policy behaves correctly.
 
-use lsm_engine::wal::{WALRecord, RecordType};
-use lsm_engine::wal::writer::WALWriter;
-use lsm_engine::wal::reader::WALReader;
 use lsm_engine::wal::SyncPolicy;
+use lsm_engine::wal::reader::WALReader;
+use lsm_engine::wal::writer::WALWriter;
+use lsm_engine::wal::{RecordType, WALRecord};
 
 fn make_record(i: usize) -> WALRecord {
-    WALRecord::put(format!("key{}", i).into_bytes(), format!("val{}", i).into_bytes())
+    WALRecord::put(
+        format!("key{}", i).into_bytes(),
+        format!("val{}", i).into_bytes(),
+    )
 }
 
 // =============================================================================
@@ -22,13 +25,25 @@ fn every_write_syncs_after_each_append() {
     assert_eq!(writer.writes_since_sync(), 0);
 
     writer.append(&make_record(0)).unwrap();
-    assert_eq!(writer.writes_since_sync(), 0, "should reset after every write");
+    assert_eq!(
+        writer.writes_since_sync(),
+        0,
+        "should reset after every write"
+    );
 
     writer.append(&make_record(1)).unwrap();
-    assert_eq!(writer.writes_since_sync(), 0, "should reset after every write");
+    assert_eq!(
+        writer.writes_since_sync(),
+        0,
+        "should reset after every write"
+    );
 
     writer.append(&make_record(2)).unwrap();
-    assert_eq!(writer.writes_since_sync(), 0, "should reset after every write");
+    assert_eq!(
+        writer.writes_since_sync(),
+        0,
+        "should reset after every write"
+    );
 }
 
 // =============================================================================
@@ -49,7 +64,11 @@ fn every_n_writes_syncs_after_nth_append() {
     assert_eq!(writer.writes_since_sync(), 2, "no sync yet");
 
     writer.append(&make_record(2)).unwrap();
-    assert_eq!(writer.writes_since_sync(), 0, "should reset after 3rd write");
+    assert_eq!(
+        writer.writes_since_sync(),
+        0,
+        "should reset after 3rd write"
+    );
 
     // Next batch
     writer.append(&make_record(3)).unwrap();
@@ -59,7 +78,11 @@ fn every_n_writes_syncs_after_nth_append() {
     assert_eq!(writer.writes_since_sync(), 2);
 
     writer.append(&make_record(5)).unwrap();
-    assert_eq!(writer.writes_since_sync(), 0, "should reset after 3rd write again");
+    assert_eq!(
+        writer.writes_since_sync(),
+        0,
+        "should reset after 3rd write again"
+    );
 }
 
 // =============================================================================
@@ -88,11 +111,16 @@ fn all_policies_produce_readable_files() {
         let reader = WALReader::new(&path).unwrap();
         let records: Vec<WALRecord> = reader.iter().map(|r| r.unwrap()).collect();
 
-        assert_eq!(records.len(), 5, "policy {:?} should produce 5 readable records", policy);
-        for i in 0..5 {
-            assert_eq!(records[i].record_type, RecordType::Put);
-            assert_eq!(records[i].key, format!("key{}", i).as_bytes());
-            assert_eq!(records[i].value, format!("val{}", i).as_bytes());
+        assert_eq!(
+            records.len(),
+            5,
+            "policy {:?} should produce 5 readable records",
+            policy
+        );
+        for (i, record) in records.iter().enumerate().take(5) {
+            assert_eq!(record.record_type, RecordType::Put);
+            assert_eq!(record.key, format!("key{}", i).as_bytes());
+            assert_eq!(record.value, format!("val{}", i).as_bytes());
         }
     }
 }
