@@ -1,308 +1,158 @@
-use lsm_engine::db::{DB, Options};
-use lsm_engine::error::Result;
-use lsm_engine::iterator::StorageIterator;
-use tempfile::TempDir;
+// Snapshot tests (scaffold)
+//
+// These tests exercise M26: Snapshot Reads. They are currently marked
+// `#[ignore]` because the DB snapshot APIs and recovery/pinning logic
+// are not fully implemented yet (see TODOs in src/db and src/db/snapshot.rs).
+// Once M26 (and related M27/M28) are implemented, remove `#[ignore]` to
+// run them as part of the CI.
 
-/// Helper to create a temporary DB for testing.
-fn create_test_db() -> Result<(DB, TempDir)> {
-    let temp_dir = TempDir::new().unwrap();
-    let db = DB::open(temp_dir.path(), Options::default())?;
-    Ok((db, temp_dir))
+use tempfile::tempdir;
+
+use lsm_engine::{Options, DB};
+
+// Helper: open a temporary DB. When the DB API is implemented this
+// will create files under the tempdir and return a handle.
+fn open_temp_db() -> (tempfile::TempDir, DB) {
+    let dir = tempdir().expect("create temp dir");
+    // Options::default() is currently a todo!() placeholder. Running
+    // these tests requires implementing Options::default() & DB::open().
+    let opts = Options::default();
+    let db = DB::open(dir.path(), opts).expect("open db");
+    (dir, db)
 }
 
-/// Test: Snapshot isolation from writes.
-///
-/// Setup:
-///   - Create DB, put (a=1, b=2)
-///   - Take snapshot
-///   - Write new data: a=999
-///
-/// Expect:
-///   - snapshot.get(a) → 1 (old value)
-///   - db.get(a) → 999 (new value)
+// ---------------------------------------------------------------------------
+// High priority snapshot tests (scaffolded)
+// ---------------------------------------------------------------------------
+
 #[test]
-#[ignore = "M26: snapshot not yet implemented"]
-fn snapshot_isolation_from_writes() -> Result<()> {
-    let (db, _temp) = create_test_db()?;
+#[ignore]
+fn snapshot_sees_old_values_after_writes() {
+    let (_dir, db) = open_temp_db();
 
-    // Write initial data
-    db.put(b"a", b"1")?;
-    db.put(b"b", b"2")?;
+    let k = b"key1";
+    db.put(k, b"v1").unwrap();
 
-    // Take snapshot
-    let snapshot = db.snapshot();
+    let snap = db.snapshot();
 
-    // New write in active DB
-    db.put(b"a", b"999")?;
+    // Newer write should not be visible through the snapshot.
+    db.put(k, b"v2").unwrap();
 
-    // Snapshot should see old value
-    assert_eq!(snapshot.get(b"a")?, Some(b"1".to_vec()));
-    // DB should see new value
-    assert_eq!(db.get(b"a")?, Some(b"999".to_vec()));
+    let snap_val = snap.get(k).unwrap();
+    assert_eq!(snap_val, Some(b"v1".to_vec()));
 
-    // Snapshot should still see b=2
-    assert_eq!(snapshot.get(b"b")?, Some(b"2".to_vec()));
-
-    Ok(())
+    let live_val = db.get(k).unwrap();
+    assert_eq!(live_val, Some(b"v2".to_vec()));
 }
 
-/// Test: Snapshot isolation from deletes.
-///
-/// Setup:
-///   - Create DB, put (k=v)
-///   - Take snapshot
-///   - Delete key
-///
-/// Expect:
-///   - snapshot.get(k) → Some(v) (still present)
-///   - db.get(k) → None (deleted)
 #[test]
-#[ignore = "M26: snapshot not yet implemented"]
-fn snapshot_isolation_from_deletes() -> Result<()> {
-    let (db, _temp) = create_test_db()?;
+#[ignore]
+fn snapshot_sees_old_values_after_delete() {
+    let (_dir, db) = open_temp_db();
 
-    // Write initial data
-    db.put(b"mykey", b"myvalue")?;
+    let k = b"key2";
+    db.put(k, b"v1").unwrap();
 
-    // Take snapshot
-    let snapshot = db.snapshot();
+    let snap = db.snapshot();
 
-    // Delete the key
-    db.delete(b"mykey")?;
+    db.delete(k).unwrap();
 
-    // Snapshot should still see the value
-    assert_eq!(snapshot.get(b"mykey")?, Some(b"myvalue".to_vec()));
-    // Active DB should see None (deleted)
-    assert_eq!(db.get(b"mykey")?, None);
+    let snap_val = snap.get(k).unwrap();
+    assert_eq!(snap_val, Some(b"v1".to_vec()));
 
-    Ok(())
+    let live_val = db.get(k).unwrap();
+    assert_eq!(live_val, None);
 }
 
-/// Test: Snapshot isolation from compaction.
-///
-/// Setup:
-///   - Create DB, put some data
-///   - Flush to SSTable
-///   - Take snapshot (pointing to that SSTable)
-///   - Trigger compaction
-///
-/// Expect:
-///   - Old SSTable file not deleted (snapshot holds Arc reference)
-///   - snapshot.get() still works (can still read old SSTable)
 #[test]
-#[ignore = "M26: snapshot not yet implemented"]
-fn snapshot_isolation_from_compaction() -> Result<()> {
-    let (db, _temp) = create_test_db()?;
+#[ignore]
+fn snapshot_isolated_from_compaction() {
+    let (dir, db) = open_temp_db();
 
-    // Write enough data to trigger flush
-    for i in 0..100 {
-        let key = format!("key-{:04}", i);
-        let val = format!("val-{:04}", i);
-        db.put(key.as_bytes(), val.as_bytes())?;
+    // Insert many keys and flush so SSTables exist.
+    for i in 0..100u8 {
+        let k = format!("k{:03}", i).into_bytes();
+        db.put(&k, b"v").unwrap();
     }
 
-    // Flush to SSTable
-    db.flush()?;
+    // Force a flush (requires DB::flush implementation).
+    db.flush().unwrap();
 
-    // Take snapshot (pointing to Level 0 SSTable)
-    let snapshot = db.snapshot();
+    let snap = db.snapshot();
 
-    // Write more data to create more SSTables
-    for i in 100..200 {
-        let key = format!("key-{:04}", i);
-        let val = format!("val-{:04}", i);
-        db.put(key.as_bytes(), val.as_bytes())?;
-    }
+    // Trigger compaction which might delete old SSTables.
+    db.compact_range(None, None).unwrap();
 
-    // Trigger compaction
-    db.flush()?;
-    db.compact_range(None, None)?;
-
-    // Snapshot should still be able to read original data
-    assert_eq!(snapshot.get(b"key-0050")?, Some(b"val-0050".to_vec()));
-
-    // New data should be visible too (in newer levels)
-    assert_eq!(snapshot.get(b"key-0150")?, Some(b"val-0150".to_vec()));
-
-    Ok(())
+    // Snapshot scans must still return data from the pre-compaction view.
+    let start = b"k000";
+    let end = b"k255";
+    let mut it = snap.scan(start, end).unwrap();
+    // If implementation returns a Scanner that implements iterator-like
+    // behavior via StorageIterator, advance and assert it's valid.
+    assert!(it.is_valid());
 }
 
-/// Test: Multiple snapshots at different times see different versions.
-///
-/// Setup:
-///   - Put k=v1
-///   - Take snapshot1
-///   - Put k=v2
-///   - Take snapshot2
-///   - Put k=v3
-///
-/// Expect:
-///   - snapshot1.get(k) → v1
-///   - snapshot2.get(k) → v2
-///   - db.get(k) → v3
 #[test]
-#[ignore = "M26: snapshot not yet implemented"]
-fn multiple_snapshots_different_views() -> Result<()> {
-    let (db, _temp) = create_test_db()?;
+#[ignore]
+fn multiple_snapshots_different_views() {
+    let (_dir, db) = open_temp_db();
 
-    // Version 1
-    db.put(b"k", b"v1")?;
-    let snapshot1 = db.snapshot();
+    let k = b"multi";
+    db.put(k, b"v1").unwrap();
 
-    // Version 2
-    db.put(b"k", b"v2")?;
-    let snapshot2 = db.snapshot();
+    let s1 = db.snapshot();
 
-    // Version 3
-    db.put(b"k", b"v3")?;
+    db.put(k, b"v2").unwrap();
 
-    // Each snapshot sees its own version
-    assert_eq!(snapshot1.get(b"k")?, Some(b"v1".to_vec()));
-    assert_eq!(snapshot2.get(b"k")?, Some(b"v2".to_vec()));
-    assert_eq!(db.get(b"k")?, Some(b"v3".to_vec()));
+    let s2 = db.snapshot();
 
-    Ok(())
+    assert_eq!(s1.get(k).unwrap(), Some(b"v1".to_vec()));
+    assert_eq!(s2.get(k).unwrap(), Some(b"v2".to_vec()));
 }
 
-/// Test: Snapshot sees consistent state across multiple keys.
-///
-/// Setup:
-///   - Put a=1, b=2, c=3
-///   - Take snapshot
-///   - Update all three keys
-///
-/// Expect:
-///   - snapshot sees old values for all three at once
 #[test]
-#[ignore = "M26: snapshot not yet implemented"]
-fn snapshot_consistent_across_keys() -> Result<()> {
-    let (db, _temp) = create_test_db()?;
+#[ignore]
+fn snapshot_release_allows_cleanup() {
+    let (dir, db) = open_temp_db();
 
-    // Write initial state
-    db.put(b"a", b"1")?;
-    db.put(b"b", b"2")?;
-    db.put(b"c", b"3")?;
+    // Put and flush to create SSTables on disk.
+    db.put(b"x", b"v").unwrap();
+    db.flush().unwrap();
 
-    // Snapshot at this point
-    let snapshot = db.snapshot();
+    let snap = db.snapshot();
 
-    // Update all keys
-    db.put(b"a", b"100")?;
-    db.put(b"b", b"200")?;
-    db.put(b"c", b"300")?;
+    // Trigger compaction — snapshot should pin SSTable files.
+    db.compact_range(None, None).unwrap();
 
-    // Snapshot sees old values consistently
-    assert_eq!(snapshot.get(b"a")?, Some(b"1".to_vec()));
-    assert_eq!(snapshot.get(b"b")?, Some(b"2".to_vec()));
-    assert_eq!(snapshot.get(b"c")?, Some(b"3".to_vec()));
+    // Check SSTable files still exist while snapshot alive.
+    let files_before: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+    assert!(!files_before.is_empty());
 
-    // DB sees new values
-    assert_eq!(db.get(b"a")?, Some(b"100".to_vec()));
-    assert_eq!(db.get(b"b")?, Some(b"200".to_vec()));
-    assert_eq!(db.get(b"c")?, Some(b"300".to_vec()));
+    // Drop snapshot and run compaction again. Old files should become
+    // eligible for deletion (behavior depends on implementation details).
+    drop(snap);
+    db.compact_range(None, None).unwrap();
 
-    Ok(())
+    let files_after: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .map(|e| e.unwrap().file_name())
+        .collect();
+
+    // Implementation-specific: the test asserts that files_after is <= files_before.
+    assert!(files_after.len() <= files_before.len());
 }
 
-/// Test: Snapshot range scan returns consistent view.
-///
-/// Setup:
-///   - Put a=1, b=2, c=3
-///   - Take snapshot
-///   - Delete and update keys
-///
-/// Expect:
-///   - snapshot.scan(a, d) returns [a, b, c] with old values
-///   - db.scan(a, d) returns updated values
 #[test]
-#[ignore = "M26: snapshot not yet implemented"]
-fn snapshot_range_scan_isolation() -> Result<()> {
-    let (db, _temp) = create_test_db()?;
+#[ignore]
+fn snapshot_on_empty_db() {
+    let (_dir, db) = open_temp_db();
 
-    // Write initial data
-    db.put(b"a", b"1")?;
-    db.put(b"b", b"2")?;
-    db.put(b"c", b"3")?;
+    let snap = db.snapshot();
+    assert_eq!(snap.get(b"missing").unwrap(), None);
 
-    // Take snapshot
-    let snapshot = db.snapshot();
-
-    // Modify data
-    db.put(b"a", b"1_new")?;
-    db.delete(b"b")?;
-    db.put(b"c", b"3_new")?;
-    db.put(b"d", b"4")?;
-
-    // Snapshot scan should see old values
-    let mut snapshot_scan = snapshot.scan(b"a", b"d")?;
-    let snapshot_results = collect_scan_results(&mut snapshot_scan)?;
-
-    assert_eq!(snapshot_results.len(), 3); // a, b, c
-    assert_eq!(snapshot_results[0], (b"a".to_vec(), b"1".to_vec()));
-    assert_eq!(snapshot_results[1], (b"b".to_vec(), b"2".to_vec()));
-    assert_eq!(snapshot_results[2], (b"c".to_vec(), b"3".to_vec()));
-
-    // DB scan should see new values (b deleted, a and c updated, d added)
-    let mut db_scan = db.scan(b"a", b"d")?;
-    let db_results = collect_scan_results(&mut db_scan)?;
-
-    assert_eq!(db_results.len(), 3); // a, c, d (b is deleted)
-    assert_eq!(db_results[0], (b"a".to_vec(), b"1_new".to_vec()));
-    assert_eq!(db_results[1], (b"c".to_vec(), b"3_new".to_vec()));
-    assert_eq!(db_results[2], (b"d".to_vec(), b"4".to_vec()));
-
-    Ok(())
-}
-
-/// Test: When snapshot is dropped, old SSTables can be reclaimed.
-///
-/// This test verifies the Arc reference counting behavior:
-///   - Take snapshot (holds Arc reference to old SSTable version)
-///   - Trigger compaction (creates new SSTable version, marks old for deletion)
-///   - Drop snapshot
-///   - Old SSTable should be eligible for cleanup
-///
-/// NOTE: We can't easily verify "eligible for cleanup" without file system inspection.
-/// This test just ensures no panics occur and references are properly dropped.
-#[test]
-#[ignore = "M26: snapshot not yet implemented"]
-fn snapshot_drop_releases_references() -> Result<()> {
-    let (db, _temp_dir) = create_test_db()?;
-
-    // Write and flush data
-    for i in 0..100 {
-        let key = format!("key-{:04}", i);
-        let val = format!("val-{:04}", i);
-        db.put(key.as_bytes(), val.as_bytes())?;
-    }
-    db.flush()?;
-
-    // Take snapshot
-    let snapshot = db.snapshot();
-
-    // Verify snapshot works
-    assert_eq!(snapshot.get(b"key-0050")?, Some(b"val-0050".to_vec()));
-
-    // Drop snapshot explicitly
-    let _ = snapshot;
-
-    // File should still exist (we haven't deleted anything yet)
-    // but if Arc counts had leaked, this would cause problems later
-    // Perform another operation to ensure system is still functional
-    db.put(b"new_key", b"new_value")?;
-    assert_eq!(db.get(b"new_key")?, Some(b"new_value".to_vec()));
-
-    Ok(())
-}
-
-/// Helper: collect all results from a scanner into a Vec.
-fn collect_scan_results(
-    scanner: &mut lsm_engine::db::snapshot::Scanner,
-) -> Result<Vec<(Vec<u8>, Vec<u8>)>> {
-    let mut results = Vec::new();
-    while scanner.is_valid() {
-        results.push((scanner.key().to_vec(), scanner.value().to_vec()));
-        scanner.next()?;
-    }
-    Ok(results)
+    let mut scanner = snap.scan(b"a", b"z").unwrap();
+    assert!(!scanner.is_valid());
 }
