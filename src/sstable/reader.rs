@@ -20,6 +20,7 @@ use crate::sstable::iterator::SSTableIterator;
 /// 4. Ready for queries (data blocks read on demand)
 pub struct SSTable {
     /// Path to the SSTable file (for debugging/error messages).
+    #[allow(dead_code)]
     path: PathBuf,
     /// Open file handle for reading data blocks.
     /// Wrapped in RefCell to allow interior mutability for seeking/reading.
@@ -32,6 +33,7 @@ pub struct SSTable {
     /// Bloom filter loaded from disk — checked before any block reads.
     bloom: BloomFilter,
     /// Footer with offsets to index and meta blocks.
+    #[allow(dead_code)]
     footer: Footer,
 }
 
@@ -230,12 +232,12 @@ impl SSTable {
     }
 
     /// Create an iterator over all entries in the SSTable.
-    pub fn iter(&self) -> Result<SSTableIterator> {
+    pub fn iter(&self) -> Result<SSTableIterator<'_>> {
         SSTableIterator::new(self)
     }
 
     /// Create an iterator over entries in [start, end).
-    pub fn range_iter(&self, start: &[u8], end: &[u8]) -> Result<SSTableIterator> {
+    pub fn range_iter(&self, start: &[u8], end: &[u8]) -> Result<SSTableIterator<'_>> {
         SSTableIterator::new_range(self, start, end)
     }
 

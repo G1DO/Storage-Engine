@@ -5,7 +5,7 @@ use std::path::Path;
 use crate::bloom::builder::BloomFilterBuilder;
 use crate::error::Result;
 use crate::sstable::block::builder::BlockBuilder;
-use crate::sstable::footer::{Footer, IndexEntry, SSTableMeta, SSTABLE_MAGIC};
+use crate::sstable::footer::{Footer, IndexEntry, SSTABLE_MAGIC, SSTableMeta};
 
 /// Builds an SSTable file from a sorted stream of key-value pairs.
 ///
@@ -146,12 +146,12 @@ impl SSTableBuilder {
         buf.extend_from_slice(&0u32.to_le_bytes());
 
         // min_key_len (4 bytes) + min_key
-        let min_key = self.min_key.as_ref().map(|k| k.as_slice()).unwrap_or(&[]);
+        let min_key = self.min_key.as_deref().unwrap_or(&[]);
         buf.extend_from_slice(&(min_key.len() as u32).to_le_bytes());
         buf.extend_from_slice(min_key);
 
         // max_key_len (4 bytes) + max_key
-        let max_key = self.max_key.as_ref().map(|k| k.as_slice()).unwrap_or(&[]);
+        let max_key = self.max_key.as_deref().unwrap_or(&[]);
         buf.extend_from_slice(&(max_key.len() as u32).to_le_bytes());
         buf.extend_from_slice(max_key);
 
@@ -206,8 +206,11 @@ impl SSTableBuilder {
         self.writer.flush()?;
         self.writer.get_ref().sync_all()?;
 
-        let file_size =
-            meta_block_offset + meta_block_size + bloom_block_size + index_block_size + Footer::SIZE as u64;
+        let file_size = meta_block_offset
+            + meta_block_size
+            + bloom_block_size
+            + index_block_size
+            + Footer::SIZE as u64;
 
         Ok(SSTableMeta {
             id: self.sst_id,

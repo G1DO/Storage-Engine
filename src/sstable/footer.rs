@@ -59,7 +59,14 @@ impl IndexEntry {
         let last_key = data[2..2 + key_len].to_vec();
         let offset = u64::from_le_bytes(data[2 + key_len..10 + key_len].try_into().unwrap());
         let size = u64::from_le_bytes(data[10 + key_len..18 + key_len].try_into().unwrap());
-        Ok((IndexEntry { last_key, offset, size }, total))
+        Ok((
+            IndexEntry {
+                last_key,
+                offset,
+                size,
+            },
+            total,
+        ))
     }
 }
 
@@ -108,9 +115,7 @@ impl Footer {
     /// Decode footer from bytes.
     pub fn decode(data: &[u8]) -> crate::error::Result<Self> {
         if data.len() < Self::SIZE {
-            return Err(crate::error::Error::Corruption(
-                "footer too short".into(),
-            ));
+            return Err(crate::error::Error::Corruption("footer too short".into()));
         }
         let index_block_offset = u64::from_le_bytes(data[0..8].try_into().unwrap());
         let index_block_size = u64::from_le_bytes(data[8..16].try_into().unwrap());
