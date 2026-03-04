@@ -1,14 +1,14 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::Sender;
 use std::sync::Arc;
+use std::sync::mpsc::Sender;
 use std::thread::JoinHandle;
 
 use crate::compaction::CompactionStrategy;
 use crate::error::Result;
+use crate::iterator::StorageIterator;
 use crate::iterator::merge::MergeIterator;
 use crate::iterator::vec_iter::VecIterator;
-use crate::iterator::StorageIterator;
 use crate::manifest::version::{Version, VersionSet};
 use crate::sstable::builder::SSTableBuilder;
 use crate::sstable::reader::SSTable;
@@ -38,12 +38,7 @@ impl CompactionScheduler {
             loop {
                 match receiver.recv() {
                     Ok(CompactionMessage::Flush) => {
-                        let _ = run_compaction(
-                            &version_set,
-                            &*strategy,
-                            &db_path,
-                            block_size,
-                        );
+                        let _ = run_compaction(&version_set, &*strategy, &db_path, block_size);
                     }
                     Ok(CompactionMessage::Shutdown) => break,
                     Err(_) => break,
@@ -111,18 +106,18 @@ fn run_compaction(
     // 5. Collect min/max keys from merged output to detect bottommost
     let mut min_key: Option<Vec<u8>> = None;
     let mut max_key: Option<Vec<u8>> = None;
-    
+
     // Scan through merge once to find key range (tombstones and non-tombstones)
     let mut entries_to_write: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
     while merge.is_valid() {
         let key = merge.key().to_vec();
         let value = merge.value().to_vec();
-        
+
         if min_key.is_none() {
             min_key = Some(key.clone());
         }
         max_key = Some(key.clone());
-        
+
         entries_to_write.push((key, value));
         merge.next()?;
     }
@@ -134,12 +129,8 @@ fn run_compaction(
     } else if let (Some(min), Some(max)) = (&min_key, &max_key) {
         // Check all deeper levels for overlaps
         let mut has_deeper_overlap = false;
-        for level_idx in (task.output_level as usize + 1)..levels.len() {
-            let overlapping = crate::compaction::find_overlapping_sstables(
-                &levels[level_idx],
-                min,
-                max,
-            );
+        for level in levels.iter().skip(task.output_level as usize + 1) {
+            let overlapping = crate::compaction::find_overlapping_sstables(level, min, max);
             if !overlapping.is_empty() {
                 has_deeper_overlap = true;
                 break;
@@ -155,7 +146,7 @@ fn run_compaction(
     let new_id = version_set.next_sst_id();
     let output_path = sst_path(db_path, new_id);
     let mut builder = SSTableBuilder::new(&output_path, new_id, block_size)?;
-    
+
     for (key, value) in entries_to_write {
         // Skip tombstones only if bottommost compaction
         if value.is_empty() && is_bottommost {
@@ -163,7 +154,7 @@ fn run_compaction(
         }
         builder.add(&key, &value)?;
     }
-    
+
     let mut new_meta = builder.finish()?;
     new_meta.level = task.output_level;
 
