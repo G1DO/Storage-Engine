@@ -1,9 +1,13 @@
 pub mod snapshot;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use crate::compaction::CompactionStyle;
 use crate::error::Result;
+use crate::manifest::version::VersionSet;
+use crate::memtable::MemTable;
+use crate::sstable::reader::SSTable;
 use crate::wal::SyncPolicy;
 
 // TODO [M32]: Implement public DB API
@@ -54,13 +58,15 @@ pub struct Stats {
 /// Coordinates all components: memtable, WAL, SSTables, compaction,
 /// manifest, block cache.
 pub struct DB {
-    // TODO [M32]: Fields
+    // M24: Read path sources
+    pub active_memtable: Arc<std::sync::RwLock<MemTable>>,
+    pub immutable_memtable: Option<Arc<MemTable>>,
+    pub version_set: Arc<VersionSet>,
+    
+    // TODO [M32]: Additional fields
     //   - options: Options
     //   - path: PathBuf
-    //   - active_memtable: Arc<RwLock<MemTable>>
-    //   - immutable_memtable: Option<Arc<MemTable>>
     //   - wal: WALManager
-    //   - version_set: VersionSet
     //   - manifest: Manifest
     //   - block_cache: BlockCache
     //   - compaction_scheduler: CompactionScheduler
@@ -84,8 +90,66 @@ impl DB {
     }
 
     /// Retrieve the value for a key.
-    pub fn get(&self, _key: &[u8]) -> Result<Option<Vec<u8>>> {
-        todo!("[M32]: memtable → immutable → L0 → L1 → ...")
+    /// 
+    /// Search order: active memtable → immutable memtable → L0 → L1 → ...
+    /// Returns the newest version of the key, or None if not found.
+    pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
+        // =====================================================================
+        // Task 1: Check active memtable
+        // =====================================================================
+        {
+            let memtable = self.active_memtable.read().unwrap();
+            if let Some(value) = memtable.get(key) {
+                return Ok(Some(value.to_vec()));
+            }
+        }
+        
+        // =====================================================================
+        // Task 2: Check immutable memtable
+        // =====================================================================
+        if let Some(immutable) = &self.immutable_memtable {
+            if let Some(value) = immutable.get(key) {
+                return Ok(Some(value.to_vec()));
+            }
+        }
+        
+        // =====================================================================
+        // Task 3 & 4: Check L0 then L1+
+        // =====================================================================
+        let current_version = self.version_set.current();
+        let version = current_version.read().unwrap();
+        
+        // Task 3: Check L0 (all SSTables, newest first)
+        // L0 can have overlapping SSTables, so we must check ALL of them
+        for meta in version.level(0).iter().rev() {
+            let sst_path = PathBuf::from(format!("{:06}.sst", meta.id));
+            let sst = SSTable::open(&sst_path)?;
+            
+            if let Some(value) = sst.get(key)? {
+                return Ok(Some(value));
+            }
+        }
+        
+        // Task 4: Check L1 and deeper
+        // L1+ have no overlaps, so at most ONE SSTable can contain the key.
+        // The SSTable.get() method already handles bloom filter checking internally.
+        for level in 1..version.levels.len() {
+            let ssts_at_level = version.level(level);
+            
+            for meta in ssts_at_level {
+                let sst_path = PathBuf::from(format!("{:06}.sst", meta.id));
+                let sst = SSTable::open(&sst_path)?;
+                
+                // SSTable.get() internally checks bloom filter before binary search.
+                // If found, return immediately.
+                if let Some(value) = sst.get(key)? {
+                    return Ok(Some(value));
+                }
+            }
+        }
+        
+        // Key not found anywhere
+        Ok(None)
     }
 
     /// Delete a key (writes a tombstone).
