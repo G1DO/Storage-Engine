@@ -1,4 +1,4 @@
-use crate::compaction::{find_overlapping_sstables, CompactionStrategy, CompactionTask};
+use crate::compaction::{CompactionStrategy, CompactionTask, find_overlapping_sstables};
 use crate::sstable::footer::SSTableMeta;
 
 /// Size-tiered compaction strategy.
@@ -42,8 +42,7 @@ impl CompactionStrategy for SizeTieredStrategy {
 
         // Find overlapping L1 SSTables (if L1 exists).
         if levels.len() > 1 {
-            let l1_overlapping =
-                find_overlapping_sstables(&levels[1], overall_min, overall_max);
+            let l1_overlapping = find_overlapping_sstables(&levels[1], overall_min, overall_max);
             inputs.extend(l1_overlapping);
         }
 
@@ -53,4 +52,3 @@ impl CompactionStrategy for SizeTieredStrategy {
         })
     }
 }
-

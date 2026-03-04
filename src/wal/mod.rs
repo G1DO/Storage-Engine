@@ -2,7 +2,7 @@ pub mod reader;
 pub mod record;
 pub mod writer;
 
-pub use record::{WALRecord, RecordType};
+pub use record::{RecordType, WALRecord};
 
 // TODO [M10]: Implement configurable sync policies
 

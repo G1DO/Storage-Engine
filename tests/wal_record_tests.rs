@@ -1,7 +1,7 @@
 // M06: WAL Record Format tests
 // Tests for encoding and decoding WAL records with CRC checksums.
 
-use lsm_engine::wal::{WALRecord, RecordType};
+use lsm_engine::wal::{RecordType, WALRecord};
 
 // =============================================================================
 // Test 1: Encode and decode Put record

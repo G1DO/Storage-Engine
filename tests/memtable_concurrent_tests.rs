@@ -1,9 +1,9 @@
 // M05: MemTable Concurrent Access tests
 // Tests for thread-safe memtable operations.
 
+use lsm_engine::memtable::MemTableManager;
 use std::sync::Arc;
 use std::thread;
-use lsm_engine::memtable::MemTableManager;
 
 // =============================================================================
 // Test 1: Concurrent readers don't block each other
