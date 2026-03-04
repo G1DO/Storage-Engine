@@ -21,8 +21,8 @@ fn empty_skiplist_size_is_zero() {
 #[test]
 fn size_increases_after_insert() {
     let mut sl = SkipList::new();
-    let key = b"hello".to_vec();      // 5 bytes
-    let value = b"world".to_vec();    // 5 bytes
+    let key = b"hello".to_vec(); // 5 bytes
+    let value = b"world".to_vec(); // 5 bytes
 
     sl.insert(key.clone(), value.clone());
 
@@ -79,9 +79,7 @@ fn multiple_inserts_accumulate_size() {
         (b"key3".to_vec(), b"value3".to_vec()),
     ];
 
-    let total_data_size: usize = entries.iter()
-        .map(|(k, v)| k.len() + v.len())
-        .sum();
+    let total_data_size: usize = entries.iter().map(|(k, v)| k.len() + v.len()).sum();
 
     for (k, v) in entries {
         sl.insert(k, v);
