@@ -36,7 +36,7 @@ impl MemTable {
     /// Look up a key. Returns None if not found OR if tombstoned.
     pub fn get(&self, key: &[u8]) -> Option<&[u8]> {
         match self.data.get(key) {
-            Some(v) if v.is_empty() => None,  // tombstone
+            Some([]) => None, // tombstone
             Some(v) => Some(v),
             None => None,
         }
@@ -44,7 +44,7 @@ impl MemTable {
 
     /// Mark a key as deleted by writing a tombstone (empty value).
     pub fn delete(&mut self, key: Vec<u8>) {
-        self.data.insert(key, Vec::new());  // empty = tombstone
+        self.data.insert(key, Vec::new()); // empty = tombstone
     }
 
     /// Return a sorted iterator over all entries (including tombstones).
@@ -104,10 +104,10 @@ impl MemTableManager {
         // Check immutable if exists
         {
             let immutable = self.immutable.read().unwrap();
-            if let Some(ref imm) = *immutable {
-                if let Some(v) = imm.get(key) {
-                    return Some(v.to_vec());
-                }
+            if let Some(ref imm) = *immutable
+                && let Some(v) = imm.get(key)
+            {
+                return Some(v.to_vec());
             }
         }
 
