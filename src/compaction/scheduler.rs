@@ -72,7 +72,6 @@ fn sst_path(db_path: &Path, id: u64) -> PathBuf {
     db_path.join(format!("{:06}.sst", id))
 }
 
-/// Execute one round of compaction if the strategy says it's needed.
 fn run_compaction(
     version_set: &VersionSet,
     strategy: &dyn CompactionStrategy,
@@ -106,21 +105,69 @@ fn run_compaction(
         iters.push(Box::new(VecIterator::new(entries)));
     }
 
-    // 4. Merge
+    // 4. Merge all iterators
     let mut merge = MergeIterator::new(iters)?;
 
-    // 5. Write output SSTable
+    // 5. Collect min/max keys from merged output to detect bottommost
+    let mut min_key: Option<Vec<u8>> = None;
+    let mut max_key: Option<Vec<u8>> = None;
+    
+    // Scan through merge once to find key range (tombstones and non-tombstones)
+    let mut entries_to_write: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+    while merge.is_valid() {
+        let key = merge.key().to_vec();
+        let value = merge.value().to_vec();
+        
+        if min_key.is_none() {
+            min_key = Some(key.clone());
+        }
+        max_key = Some(key.clone());
+        
+        entries_to_write.push((key, value));
+        merge.next()?;
+    }
+
+    // 6. Determine if this compaction is bottommost
+    let is_bottommost = if task.output_level as usize >= levels.len() - 1 {
+        // Already at last level
+        true
+    } else if let (Some(min), Some(max)) = (&min_key, &max_key) {
+        // Check all deeper levels for overlaps
+        let mut has_deeper_overlap = false;
+        for level_idx in (task.output_level as usize + 1)..levels.len() {
+            let overlapping = crate::compaction::find_overlapping_sstables(
+                &levels[level_idx],
+                min,
+                max,
+            );
+            if !overlapping.is_empty() {
+                has_deeper_overlap = true;
+                break;
+            }
+        }
+        !has_deeper_overlap
+    } else {
+        // No keys in merge (shouldn't happen, but safe)
+        true
+    };
+
+    // 7. Write output SSTable, filtering tombstones if bottommost
     let new_id = version_set.next_sst_id();
     let output_path = sst_path(db_path, new_id);
     let mut builder = SSTableBuilder::new(&output_path, new_id, block_size)?;
-    while merge.is_valid() {
-        builder.add(merge.key(), merge.value())?;
-        merge.next()?;
+    
+    for (key, value) in entries_to_write {
+        // Skip tombstones only if bottommost compaction
+        if value.is_empty() && is_bottommost {
+            continue;
+        }
+        builder.add(&key, &value)?;
     }
+    
     let mut new_meta = builder.finish()?;
     new_meta.level = task.output_level;
 
-    // 6. Install new version
+    // 8. Install new version
     {
         let current = version_set.current();
         let old_v = current.read().unwrap();
@@ -136,7 +183,7 @@ fn run_compaction(
         version_set.install(Version { levels: new_levels });
     }
 
-    // 7. Delete old SSTable files
+    // 9. Delete old SSTable files
     for meta in &task.inputs {
         let _ = std::fs::remove_file(sst_path(db_path, meta.id));
     }

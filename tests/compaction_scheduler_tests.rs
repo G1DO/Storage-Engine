@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use lsm_engine::compaction::scheduler::CompactionScheduler;
 use lsm_engine::compaction::size_tiered::SizeTieredStrategy;
+use lsm_engine::iterator::StorageIterator;
 use lsm_engine::manifest::version::VersionSet;
 use lsm_engine::sstable::builder::SSTableBuilder;
 use lsm_engine::sstable::footer::SSTableMeta;
@@ -69,6 +70,217 @@ fn shutdown_completes_within_timeout() {
         start.elapsed() < Duration::from_secs(1),
         "shutdown took too long"
     );
+}
+
+// ============================================================================
+// M23: Tombstone Propagation Tests
+// ============================================================================
+
+#[test]
+fn test_tombstone_dropped_at_bottommost_level() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path();
+    let vs = Arc::new(VersionSet::new(2));
+
+    // Create L0 SSTable: Mix of regular entry + tombstone
+    let l0_id = 201u64;
+    {
+        let path = db_path.join(format!("{:06}.sst", l0_id));
+        let mut builder = SSTableBuilder::new(&path, l0_id, 4096).unwrap();
+        builder.add(b"keep_me", b"value").unwrap();
+        builder.add(b"delete_me", &vec![]).unwrap(); // Tombstone
+        let mut meta = builder.finish().unwrap();
+        meta.level = 0;
+        
+        let current = vs.current();
+        let mut v = current.write().unwrap();
+        v.levels[0].push(meta);
+    }
+
+    // Compact L0→L1 (bottommost since no L2)
+    let strategy = Arc::new(SizeTieredStrategy::new(1));
+    let scheduler = CompactionScheduler::start(
+        Arc::clone(&vs),
+        strategy,
+        db_path.to_path_buf(),
+        4096,
+    ).unwrap();
+
+    scheduler.notify_flush();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    scheduler.shutdown().unwrap();
+
+    // Check L1: Should have only "keep_me", tombstone dropped
+    let current = vs.current();
+    let v = current.read().unwrap();
+    assert_eq!(v.level(0).len(), 0, "L0 should be empty");
+    
+    if !v.level(1).is_empty() {
+        let l1_meta = &v.level(1)[0];
+        let l1_path = db_path.join(format!("{:06}.sst", l1_meta.id));
+        let sst = SSTable::open(&l1_path).unwrap();
+
+        let mut iter = sst.iter().unwrap();
+        let mut found_keep_me = false;
+        let mut found_delete_me = false;
+        
+        while iter.is_valid() {
+            match iter.key() {
+                b"keep_me" => {
+                    found_keep_me = true;
+                    assert!(!iter.value().is_empty(), "keep_me should have value");
+                }
+                b"delete_me" => {
+                    found_delete_me = true;
+                }
+                _ => {}
+            }
+            iter.next().unwrap();
+        }
+        
+        assert!(found_keep_me, "keep_me should be in L1");
+        assert!(!found_delete_me, "delete_me tombstone should be dropped at bottommost");
+    } else {
+        panic!("L1 is empty, compaction might not have happened");
+    }
+}
+
+#[test]
+fn test_tombstone_propagated_with_deeper_overlap() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path();
+    let vs = Arc::new(VersionSet::new(3));
+
+    // Step 1: Create L2 with data that will overlap later
+    // L2: "key_x" with old_value
+    let l2_id = 301u64;
+    {
+        let path = db_path.join(format!("{:06}.sst", l2_id));
+        let mut builder = SSTableBuilder::new(&path, l2_id, 4096).unwrap();
+        builder.add(b"key_x", b"old_value").unwrap();
+        let mut meta = builder.finish().unwrap();
+        meta.level = 2;
+        
+        let current = vs.current();
+        let mut v = current.write().unwrap();
+        v.levels[2].push(meta);
+    }
+
+    // Step 2: Create L0 with tombstone for same key
+    let l0_id = 302u64;
+    {
+        let path = db_path.join(format!("{:06}.sst", l0_id));
+        let mut builder = SSTableBuilder::new(&path, l0_id, 4096).unwrap();
+        builder.add(b"key_x", &vec![]).unwrap(); // Tombstone
+        let mut meta = builder.finish().unwrap();
+        meta.level = 0;
+        
+        let current = vs.current();
+        let mut v = current.write().unwrap();
+        v.levels[0].push(meta);
+    }
+
+    // Step 3: Compact L0→L1 (which should keep tombstone because L2 has overlap)
+    let strategy = Arc::new(SizeTieredStrategy::new(1));
+    let scheduler = CompactionScheduler::start(
+        Arc::clone(&vs),
+        strategy,
+        db_path.to_path_buf(),
+        4096,
+    ).unwrap();
+
+    scheduler.notify_flush();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    scheduler.shutdown().unwrap();
+
+    // Check: L1 should have the tombstone (not dropped because L2 has overlap)
+    let current = vs.current();
+    let v = current.read().unwrap();
+    assert_eq!(v.level(0).len(), 0, "L0 should be empty after compaction");
+    
+    // L1 should have tombstone
+    if !v.level(1).is_empty() {
+        let l1_meta = &v.level(1)[0];
+        let l1_path = db_path.join(format!("{:06}.sst", l1_meta.id));
+        let sst = SSTable::open(&l1_path).unwrap();
+        
+        // Get with tombstone handling: the key should exist with empty value
+        let mut iter = sst.iter().unwrap();
+        let mut found_tombstone = false;
+        while iter.is_valid() {
+            if iter.key() == b"key_x" && iter.value().is_empty() {
+                found_tombstone = true;
+                break;
+            }
+            iter.next().unwrap();
+        }
+        
+        assert!(found_tombstone, "Tombstone should be kept in L1 due to L2 overlap");
+    }
+}
+
+#[test]
+fn test_multiple_tombstones_dropped_at_bottommost() {
+    let dir = tempdir().unwrap();
+    let db_path = dir.path();
+    let vs = Arc::new(VersionSet::new(2));
+
+    // L0: Mix of regular entries and tombstones
+    let l0_id = 401u64;
+    {
+        let path = db_path.join(format!("{:06}.sst", l0_id));
+        let mut builder = SSTableBuilder::new(&path, l0_id, 4096).unwrap();
+        builder.add(b"k1", b"v1").unwrap();
+        builder.add(b"k2", &vec![]).unwrap(); // tombstone
+        builder.add(b"k3", b"v3").unwrap();
+        builder.add(b"k4", &vec![]).unwrap(); // tombstone
+        let mut meta = builder.finish().unwrap();
+        meta.level = 0;
+        
+        let current = vs.current();
+        let mut v = current.write().unwrap();
+        v.levels[0].push(meta);
+    }
+
+    // Compact L0→L1 (L1 is bottommost since no L2)
+    let strategy = Arc::new(SizeTieredStrategy::new(1));
+    let scheduler = CompactionScheduler::start(
+        Arc::clone(&vs),
+        strategy,
+        db_path.to_path_buf(),
+        4096,
+    ).unwrap();
+
+    scheduler.notify_flush();
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    scheduler.shutdown().unwrap();
+
+    // Check L1: Should have 2 entries (k1, k3) with tombstones dropped
+    let current = vs.current();
+    let v = current.read().unwrap();
+    
+    if !v.level(1).is_empty() {
+        let l1_meta = &v.level(1)[0];
+        let l1_path = db_path.join(format!("{:06}.sst", l1_meta.id));
+        let sst = SSTable::open(&l1_path).unwrap();
+
+        let mut count = 0;
+        let mut iter = sst.iter().unwrap();
+        while iter.is_valid() {
+            assert!(
+                !iter.value().is_empty(),
+                "No tombstones should be in L1 at bottommost"
+            );
+            match iter.key() {
+                b"k1" | b"k3" => count += 1,
+                b"k2" | b"k4" => panic!("Tombstones should be dropped"),
+                _ => {}
+            }
+            iter.next().unwrap();
+        }
+        
+        assert_eq!(count, 2, "Should have exactly 2 non-tombstone entries");
+    }
 }
 
 #[test]
