@@ -1,9 +1,9 @@
 // M07: WAL Writer tests
 // Tests for writing WAL records to disk with fsync.
 
-use std::io::Read;
-use lsm_engine::wal::{WALRecord, RecordType, SyncPolicy};
 use lsm_engine::wal::writer::WALWriter;
+use lsm_engine::wal::{RecordType, SyncPolicy, WALRecord};
+use std::io::Read;
 
 // =============================================================================
 // Test 1: Write one record, read file back
@@ -76,7 +76,9 @@ fn data_survives_reopen() {
     // Write and sync
     {
         let mut writer = WALWriter::new(&path, SyncPolicy::EveryWrite).unwrap();
-        writer.append(&WALRecord::put(b"durable".to_vec(), b"data".to_vec())).unwrap();
+        writer
+            .append(&WALRecord::put(b"durable".to_vec(), b"data".to_vec()))
+            .unwrap();
         writer.sync().unwrap();
     }
 

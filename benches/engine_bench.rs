@@ -9,7 +9,7 @@
 //   6. Compaction impact: write throughput during compaction
 //   7. Recovery time: write 1M keys, kill, measure reopen time
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 
 fn placeholder_bench(_c: &mut Criterion) {
     // TODO [M33]: Replace with real benchmarks

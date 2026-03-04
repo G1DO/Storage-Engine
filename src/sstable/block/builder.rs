@@ -49,11 +49,13 @@ impl BlockBuilder {
         // Record offset of this entry
         self.offsets.push(self.data.len() as u16);
 
-            // Serialize: key_len (2B) | val_len (2B) | key | value
-            self.data.extend_from_slice(&(key.len() as u16).to_le_bytes());
-            self.data.extend_from_slice(&(value.len() as u16).to_le_bytes());
-            self.data.extend_from_slice(key);
-            self.data.extend_from_slice(value);
+        // Serialize: key_len (2B) | val_len (2B) | key | value
+        self.data
+            .extend_from_slice(&(key.len() as u16).to_le_bytes());
+        self.data
+            .extend_from_slice(&(value.len() as u16).to_le_bytes());
+        self.data.extend_from_slice(key);
+        self.data.extend_from_slice(value);
 
         true
     }

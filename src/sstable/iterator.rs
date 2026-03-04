@@ -93,12 +93,11 @@ impl<'a> SSTableIterator<'a> {
 
     /// Check if current position is past the end key.
     fn is_past_end(&self) -> bool {
-        if let Some(ref end) = self.end_key {
-            if let Some(ref block) = self.current_block {
-                if self.current_entry_idx < block.offsets().len() {
-                    return self.key() >= end.as_slice();
-                }
-            }
+        if let Some(ref end) = self.end_key
+            && let Some(ref block) = self.current_block
+            && self.current_entry_idx < block.offsets().len()
+        {
+            return self.key() >= end.as_slice();
         }
         false
     }
@@ -145,10 +144,10 @@ impl<'a> StorageIterator for SSTableIterator<'a> {
         self.current_entry_idx += 1;
 
         // If we've exhausted the current block, load the next one
-        if let Some(ref block) = self.current_block {
-            if self.current_entry_idx >= block.offsets().len() {
-                self.next_block()?;
-            }
+        if let Some(ref block) = self.current_block
+            && self.current_entry_idx >= block.offsets().len()
+        {
+            self.next_block()?;
         }
 
         Ok(())

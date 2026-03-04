@@ -1,4 +1,4 @@
-use crate::compaction::{find_overlapping_sstables, CompactionStrategy, CompactionTask};
+use crate::compaction::{CompactionStrategy, CompactionTask, find_overlapping_sstables};
 use crate::sstable::footer::SSTableMeta;
 
 // TODO [M21]: Implement leveled compaction
@@ -45,11 +45,8 @@ impl CompactionStrategy for LeveledStrategy {
                     let mut inputs = vec![picked.clone()];
 
                     if let Some(next_ssts) = levels.get(next_level) {
-                        let overlapping = find_overlapping_sstables(
-                            next_ssts,
-                            &picked.min_key,
-                            &picked.max_key,
-                        );
+                        let overlapping =
+                            find_overlapping_sstables(next_ssts, &picked.min_key, &picked.max_key);
                         inputs.extend(overlapping);
                     }
 

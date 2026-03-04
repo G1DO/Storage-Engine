@@ -24,7 +24,9 @@ impl Version {
     // level: return &self.levels[level]
     // total_sstables: sum the len() of each level
     pub fn new(num_levels: usize) -> Self {
-        Self { levels: vec![Vec::new(); num_levels] }
+        Self {
+            levels: vec![Vec::new(); num_levels],
+        }
     }
 
     pub fn level(&self, level: usize) -> &[SSTableMeta] {

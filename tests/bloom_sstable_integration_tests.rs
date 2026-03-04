@@ -27,11 +27,7 @@ fn bloom_sstable_existing_key_found() {
     for i in 0..100u32 {
         let key = format!("key_{:05}", i);
         let result = sstable.get(key.as_bytes()).unwrap();
-        assert!(
-            result.is_some(),
-            "Key {} should be found but got None",
-            key
-        );
+        assert!(result.is_some(), "Key {} should be found but got None", key);
         assert_eq!(result.unwrap(), format!("val_{:05}", i).as_bytes());
     }
 }
@@ -58,11 +54,7 @@ fn bloom_sstable_nonexistent_key_none() {
     for i in 100..200u32 {
         let key = format!("key_{:05}", i);
         let result = sstable.get(key.as_bytes()).unwrap();
-        assert!(
-            result.is_none(),
-            "Key {} should not be found",
-            key
-        );
+        assert!(result.is_none(), "Key {} should not be found", key);
     }
 }
 
@@ -95,7 +87,7 @@ fn bloom_sstable_false_positive_rate_reasonable() {
     let mut false_positives = 0u32;
 
     for i in 0..total_checks {
-        let key = format!("nokey_{:06}", i);
+        let _key = format!("nokey_{:06}", i);
         // These keys are outside [min_key, max_key] range so they'll be
         // caught by the range check before bloom. Use keys that fall WITHIN
         // the range to actually test the bloom filter.
@@ -149,8 +141,8 @@ fn bloom_survives_reopen() {
 // =============================================================================
 #[test]
 fn footer_has_bloom_block_info() {
-    use std::io::{Read, Seek, SeekFrom};
     use lsm_engine::sstable::footer::Footer;
+    use std::io::{Read, Seek, SeekFrom};
 
     let dir = tempdir().unwrap();
     let path = dir.path().join("test.sst");
@@ -162,12 +154,16 @@ fn footer_has_bloom_block_info() {
     // Read footer from file
     let mut file = std::fs::File::open(&path).unwrap();
     let file_len = file.metadata().unwrap().len();
-    file.seek(SeekFrom::Start(file_len - Footer::SIZE as u64)).unwrap();
+    file.seek(SeekFrom::Start(file_len - Footer::SIZE as u64))
+        .unwrap();
     let mut footer_buf = vec![0u8; Footer::SIZE];
     file.read_exact(&mut footer_buf).unwrap();
 
     let footer = Footer::decode(&footer_buf).unwrap();
-    assert!(footer.bloom_block_size > 0, "Bloom block size should be > 0");
+    assert!(
+        footer.bloom_block_size > 0,
+        "Bloom block size should be > 0"
+    );
     assert!(
         footer.bloom_block_offset > 0,
         "Bloom block offset should be > 0"

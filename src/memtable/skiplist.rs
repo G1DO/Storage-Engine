@@ -23,15 +23,15 @@ pub struct SkipNode {
     key: Vec<u8>,
     value: Vec<u8>,
     forward: Vec<Option<usize>>, // indices into SkipList.nodes
-    //   - key: Vec<u8>
-    //   - value: Vec<u8>
-    //   - forward: Vec<Option<pointer to next SkipNode at each level>>
-    //
-    // Design decision: how to represent pointers?
-    //   Option A: Box<SkipNode> (owned, simple but hard for back-traversal)
-    //   Option B: Raw pointers (unsafe, more flexible)
-    //   Option C: Arena allocation with indices (no unsafe, good cache locality)
-    //   Start with Option A or C. Avoid raw pointers until you understand why.
+                                 //   - key: Vec<u8>
+                                 //   - value: Vec<u8>
+                                 //   - forward: Vec<Option<pointer to next SkipNode at each level>>
+                                 //
+                                 // Design decision: how to represent pointers?
+                                 //   Option A: Box<SkipNode> (owned, simple but hard for back-traversal)
+                                 //   Option B: Raw pointers (unsafe, more flexible)
+                                 //   Option C: Arena allocation with indices (no unsafe, good cache locality)
+                                 //   Start with Option A or C. Avoid raw pointers until you understand why.
 }
 
 /// A probabilistic sorted data structure.
@@ -51,24 +51,28 @@ pub struct SkipList {
     size_bytes: usize,
 }
 
+impl Default for SkipList {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SkipList {
     /// Create a new empty skip list.
     pub fn new() -> Self {
         let head = SkipNode {
-        key: Vec::new(),
-        value: Vec::new(),
-        forward: vec![None; MAX_HEIGHT],
-    };
-    let mut nodes = Vec::new();
+            key: Vec::new(),
+            value: Vec::new(),
+            forward: vec![None; MAX_HEIGHT],
+        };
+        let nodes = vec![head];
 
-    nodes.push(head);
-
-        return SkipList {
+        SkipList {
             nodes,
             height: 1,
             len: 0,
             size_bytes: 0,
-        };  
+        }
     }
 
     /// Insert a key-value pair. Overwrites if key already exists.
@@ -78,7 +82,7 @@ impl SkipList {
     ///   2. Generate a random height for the new node (coin flip per level)
     ///   3. Create node with that height
     ///   4. Splice into the list at each level up to the node's height
-    pub fn insert(&mut  self, key: Vec<u8>, value: Vec<u8>) {
+    pub fn insert(&mut self, key: Vec<u8>, value: Vec<u8>) {
         let mut current = 0; // HEAD index
         let mut update: [usize; MAX_HEIGHT] = [0; MAX_HEIGHT];
 
@@ -109,8 +113,8 @@ impl SkipList {
 
         // If new node is taller than current list, update predecessors for new levels
         if new_height > self.height {
-            for level in self.height..new_height {
-                update[level] = 0; // HEAD is predecessor for new levels
+            for item in update.iter_mut().take(new_height).skip(self.height) {
+                *item = 0; // HEAD is predecessor for new levels
             }
             self.height = new_height;
         }
@@ -127,6 +131,7 @@ impl SkipList {
         self.nodes.push(new_node);
 
         // Splice into each level
+        #[allow(clippy::needless_range_loop)]
         for level in 0..new_height {
             // new node points to what predecessor was pointing to
             self.nodes[new_idx].forward[level] = self.nodes[update[level]].forward[level];
@@ -151,37 +156,37 @@ impl SkipList {
     ///   4. Repeat until level 0
     ///   5. Check if the node at level 0 matches
     pub fn get(&self, key: &[u8]) -> Option<&[u8]> {
-    let mut current = 0; // HEAD index
-    let mut level = self.height - 1;
+        let mut current = 0; // HEAD index
+        let mut level = self.height - 1;
 
-    loop {
-        let next = self.nodes[current].forward[level];
-        if let Some(next_idx) = next {
-            if self.nodes[next_idx].key.as_slice() < key {
+        loop {
+            let next = self.nodes[current].forward[level];
+            if let Some(next_idx) = next
+                && self.nodes[next_idx].key.as_slice() < key
+            {
                 current = next_idx; // move right
                 continue;
             }
+            // can't move right, go down
+            if level == 0 {
+                break;
+            }
+            level -= 1;
         }
-        // can't move right, go down
-        if level == 0 {
-            break;
-        }
-        level -= 1;
-    }
 
-    // check the node ahead at level 0
-    if let Some(candidate_idx) = self.nodes[current].forward[0] {
-        if self.nodes[candidate_idx].key.as_slice() == key {
+        // check the node ahead at level 0
+        if let Some(candidate_idx) = self.nodes[current].forward[0]
+            && self.nodes[candidate_idx].key.as_slice() == key
+        {
             return Some(self.nodes[candidate_idx].value.as_slice());
         }
-    }
 
-    None
-}
+        None
+    }
 
     /// Number of entries in the skip list.
     pub fn len(&self) -> usize {
-        return self.len;
+        self.len
     }
 
     /// Whether the skip list is empty.
@@ -189,7 +194,7 @@ impl SkipList {
         if self.len == 0 {
             return true;
         }
-        return false;
+        false
     }
 
     /// Approximate memory usage in bytes.
@@ -198,25 +203,24 @@ impl SkipList {
     }
 
     /// Create an iterator over all entries in sorted order.
-
     /// Traverses level 0 (the bottom level contains all entries).
     pub fn iter(&self) -> SkipListIterator<'_> {
         SkipListIterator {
-        list: self,
-        current: self.nodes[0].forward[0],
-    }}
+            list: self,
+            current: self.nodes[0].forward[0],
+        }
+    }
 
     /// Generate a random level for a new node.
     /// Each level has a 1/4 probability (LevelDB uses 1/4, not 1/2).
     /// Higher branching factor = shorter skip list = fewer levels = less memory.
     fn random_height(&self) -> usize {
-    let mut height = 1;
-    while height < MAX_HEIGHT && rand::random::<f64>() < 0.25 {
-        height += 1;
-    }   
-    return height;
-}   
-
+        let mut height = 1;
+        while height < MAX_HEIGHT && rand::random::<f64>() < 0.25 {
+            height += 1;
+        }
+        height
+    }
 }
 
 /// Iterator over skip list entries in sorted order.
@@ -262,11 +266,11 @@ impl<'a> SkipListIterator<'a> {
 
         loop {
             let next = self.list.nodes[current].forward[level];
-            if let Some(next_idx) = next {
-                if self.list.nodes[next_idx].key.as_slice() < target {
-                    current = next_idx;
-                    continue;
-                }
+            if let Some(next_idx) = next
+                && self.list.nodes[next_idx].key.as_slice() < target
+            {
+                current = next_idx;
+                continue;
             }
             if level == 0 {
                 break;

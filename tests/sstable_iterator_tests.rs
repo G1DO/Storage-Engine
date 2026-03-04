@@ -114,7 +114,7 @@ fn range_no_matching_keys_empty() {
     builder.finish().unwrap();
 
     let sstable = SSTable::open(&path).unwrap();
-    let mut iter = sstable.range_iter(b"ddd", b"eee").unwrap();
+    let iter = sstable.range_iter(b"ddd", b"eee").unwrap();
 
     assert!(!iter.is_valid()); // Immediately invalid
 }
@@ -133,7 +133,7 @@ fn range_start_before_min_starts_at_first() {
     builder.finish().unwrap();
 
     let sstable = SSTable::open(&path).unwrap();
-    let mut iter = sstable.range_iter(b"aaa", b"zzz").unwrap();
+    let iter = sstable.range_iter(b"aaa", b"zzz").unwrap();
 
     assert!(iter.is_valid());
     assert_eq!(iter.key(), b"middle");
@@ -306,7 +306,7 @@ fn range_iteration_crosses_block_boundaries() {
     while iter.is_valid() {
         let key = String::from_utf8_lossy(iter.key()).to_string();
         assert!(
-            key >= "key_00025".to_string() && key < "key_00075".to_string(),
+            key.as_str() >= "key_00025" && key.as_str() < "key_00075",
             "Key {} out of range",
             key
         );

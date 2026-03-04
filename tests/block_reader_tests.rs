@@ -1,9 +1,9 @@
 // M12: Block Reader + Binary Search tests
 // Tests for deserializing blocks and point lookup via binary search.
 
+use lsm_engine::iterator::StorageIterator;
 use lsm_engine::sstable::block::builder::BlockBuilder;
 use lsm_engine::sstable::block::reader::Block;
-use lsm_engine::iterator::StorageIterator;
 
 // Helper: build a block from a slice of (key, value) pairs.
 fn build_block(entries: &[(&[u8], &[u8])]) -> Vec<u8> {
@@ -26,7 +26,7 @@ fn roundtrip_build_and_decode() {
     ]);
     let block = Block::decode(data).expect("decode should succeed");
     // Verify we can iterate all 3 entries (basic roundtrip sanity)
-    let mut iter = block.iter();
+    let iter = block.iter();
     assert!(iter.is_valid());
 }
 
@@ -55,11 +55,7 @@ fn get_existing_key() {
 // =============================================================================
 #[test]
 fn get_nonexistent_key() {
-    let data = build_block(&[
-        (b"ant", b"tiny"),
-        (b"cat", b"meow"),
-        (b"elk", b"antlers"),
-    ]);
+    let data = build_block(&[(b"ant", b"tiny"), (b"cat", b"meow"), (b"elk", b"antlers")]);
     let block = Block::decode(data).unwrap();
 
     assert_eq!(block.get(b"zzz"), None);
@@ -71,11 +67,7 @@ fn get_nonexistent_key() {
 // =============================================================================
 #[test]
 fn get_key_between_entries() {
-    let data = build_block(&[
-        (b"ant", b"tiny"),
-        (b"cat", b"meow"),
-        (b"elk", b"antlers"),
-    ]);
+    let data = build_block(&[(b"ant", b"tiny"), (b"cat", b"meow"), (b"elk", b"antlers")]);
     let block = Block::decode(data).unwrap();
 
     assert_eq!(block.get(b"bat"), None, "bat is between ant and cat");
@@ -137,11 +129,7 @@ fn seek_to_existing_key() {
 // =============================================================================
 #[test]
 fn seek_to_nonexistent_key() {
-    let data = build_block(&[
-        (b"ant", b"1"),
-        (b"cat", b"3"),
-        (b"elk", b"5"),
-    ]);
+    let data = build_block(&[(b"ant", b"1"), (b"cat", b"3"), (b"elk", b"5")]);
     let block = Block::decode(data).unwrap();
 
     let mut iter = block.iter();
@@ -161,16 +149,15 @@ fn seek_to_nonexistent_key() {
 // =============================================================================
 #[test]
 fn seek_past_all_keys() {
-    let data = build_block(&[
-        (b"ant", b"1"),
-        (b"bat", b"2"),
-        (b"cat", b"3"),
-    ]);
+    let data = build_block(&[(b"ant", b"1"), (b"bat", b"2"), (b"cat", b"3")]);
     let block = Block::decode(data).unwrap();
 
     let mut iter = block.iter();
     iter.seek(b"zzz").unwrap();
-    assert!(!iter.is_valid(), "should be invalid when seeked past all keys");
+    assert!(
+        !iter.is_valid(),
+        "should be invalid when seeked past all keys"
+    );
 }
 
 // =============================================================================
@@ -211,11 +198,7 @@ fn iterator_exhaustion() {
 // =============================================================================
 #[test]
 fn seek_to_first_key() {
-    let data = build_block(&[
-        (b"ant", b"1"),
-        (b"bat", b"2"),
-        (b"cat", b"3"),
-    ]);
+    let data = build_block(&[(b"ant", b"1"), (b"bat", b"2"), (b"cat", b"3")]);
     let block = Block::decode(data).unwrap();
 
     let mut iter = block.iter();
@@ -230,11 +213,7 @@ fn seek_to_first_key() {
 // =============================================================================
 #[test]
 fn seek_before_first_key() {
-    let data = build_block(&[
-        (b"bat", b"2"),
-        (b"cat", b"3"),
-        (b"dog", b"4"),
-    ]);
+    let data = build_block(&[(b"bat", b"2"), (b"cat", b"3"), (b"dog", b"4")]);
     let block = Block::decode(data).unwrap();
 
     let mut iter = block.iter();

@@ -1,8 +1,8 @@
 // M04: MemTable API with Tombstones
 // Tests for the memtable wrapper around skip list.
 
-use lsm_engine::memtable::MemTable;
 use lsm_engine::iterator::StorageIterator;
+use lsm_engine::memtable::MemTable;
 
 // =============================================================================
 // Test 1: Basic put and get
@@ -97,7 +97,7 @@ fn iterator_includes_tombstones() {
     let mut mt = MemTable::new(1024 * 1024);
     mt.put(b"a".to_vec(), b"value_a".to_vec());
     mt.put(b"b".to_vec(), b"value_b".to_vec());
-    mt.delete(b"b".to_vec());  // tombstone for b
+    mt.delete(b"b".to_vec()); // tombstone for b
     mt.put(b"c".to_vec(), b"value_c".to_vec());
 
     let mut iter = mt.iter();
@@ -111,7 +111,7 @@ fn iterator_includes_tombstones() {
     // Should see all 3 keys: a, b (tombstone), c
     assert_eq!(keys.len(), 3);
     assert_eq!(keys[0], b"a");
-    assert_eq!(keys[1], b"b");  // tombstone entry still present
+    assert_eq!(keys[1], b"b"); // tombstone entry still present
     assert_eq!(keys[2], b"c");
 }
 

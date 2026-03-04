@@ -14,7 +14,10 @@ struct VecIterator {
 impl VecIterator {
     fn new(entries: Vec<(&[u8], &[u8])>) -> Self {
         Self {
-            entries: entries.into_iter().map(|(k, v)| (k.to_vec(), v.to_vec())).collect(),
+            entries: entries
+                .into_iter()
+                .map(|(k, v)| (k.to_vec(), v.to_vec()))
+                .collect(),
             pos: 0,
         }
     }
@@ -61,16 +64,8 @@ fn collect_all(iter: &mut MergeIterator) -> Vec<(Vec<u8>, Vec<u8>)> {
 #[test]
 fn merge_two_sorted_sequences_no_overlap() {
     // [1, 3, 5] and [2, 4, 6] → [1, 2, 3, 4, 5, 6]
-    let iter1 = VecIterator::new(vec![
-        (b"1", b"v1"),
-        (b"3", b"v3"),
-        (b"5", b"v5"),
-    ]);
-    let iter2 = VecIterator::new(vec![
-        (b"2", b"v2"),
-        (b"4", b"v4"),
-        (b"6", b"v6"),
-    ]);
+    let iter1 = VecIterator::new(vec![(b"1", b"v1"), (b"3", b"v3"), (b"5", b"v5")]);
+    let iter2 = VecIterator::new(vec![(b"2", b"v2"), (b"4", b"v4"), (b"6", b"v6")]);
 
     let iters: Vec<Box<dyn StorageIterator>> = vec![Box::new(iter1), Box::new(iter2)];
     let mut merge = MergeIterator::new(iters).unwrap();
@@ -83,24 +78,21 @@ fn merge_two_sorted_sequences_no_overlap() {
 #[test]
 fn merge_with_duplicate_keys_keeps_newest() {
     // Index 0 = newest. [a=1, c=3] and [a=2, b=2] → [a=1(newest), b=2, c=3]
-    let iter_newer = VecIterator::new(vec![
-        (b"a", b"1"),
-        (b"c", b"3"),
-    ]);
-    let iter_older = VecIterator::new(vec![
-        (b"a", b"2"),
-        (b"b", b"2"),
-    ]);
+    let iter_newer = VecIterator::new(vec![(b"a", b"1"), (b"c", b"3")]);
+    let iter_older = VecIterator::new(vec![(b"a", b"2"), (b"b", b"2")]);
 
     let iters: Vec<Box<dyn StorageIterator>> = vec![Box::new(iter_newer), Box::new(iter_older)];
     let mut merge = MergeIterator::new(iters).unwrap();
 
     let result = collect_all(&mut merge);
-    assert_eq!(result, vec![
-        (b"a".to_vec(), b"1".to_vec()),   // from newer (index 0)
-        (b"b".to_vec(), b"2".to_vec()),
-        (b"c".to_vec(), b"3".to_vec()),
-    ]);
+    assert_eq!(
+        result,
+        vec![
+            (b"a".to_vec(), b"1".to_vec()), // from newer (index 0)
+            (b"b".to_vec(), b"2".to_vec()),
+            (b"c".to_vec(), b"3".to_vec()),
+        ]
+    );
 }
 
 #[test]
@@ -109,11 +101,8 @@ fn merge_three_iterators() {
     let iter1 = VecIterator::new(vec![(b"a", b"1"), (b"c", b"1")]);
     let iter2 = VecIterator::new(vec![(b"c", b"2"), (b"e", b"2")]);
 
-    let iters: Vec<Box<dyn StorageIterator>> = vec![
-        Box::new(iter0),
-        Box::new(iter1),
-        Box::new(iter2),
-    ];
+    let iters: Vec<Box<dyn StorageIterator>> =
+        vec![Box::new(iter0), Box::new(iter1), Box::new(iter2)];
     let mut merge = MergeIterator::new(iters).unwrap();
 
     let result = collect_all(&mut merge);
@@ -145,11 +134,7 @@ fn merge_all_empty() {
     let e2 = VecIterator::new(vec![]);
     let e3 = VecIterator::new(vec![]);
 
-    let iters: Vec<Box<dyn StorageIterator>> = vec![
-        Box::new(e1),
-        Box::new(e2),
-        Box::new(e3),
-    ];
+    let iters: Vec<Box<dyn StorageIterator>> = vec![Box::new(e1), Box::new(e2), Box::new(e3)];
     let mut merge = MergeIterator::new(iters).unwrap();
 
     assert!(!merge.is_valid());
@@ -171,10 +156,7 @@ fn merge_large_ten_iterators() {
             let value = format!("val_iter{}_entry{}", i, j);
             entries.push((key.into_bytes(), value.into_bytes()));
         }
-        iters.push(Box::new(VecIterator {
-            entries,
-            pos: 0,
-        }));
+        iters.push(Box::new(VecIterator { entries, pos: 0 }));
     }
 
     let mut merge = MergeIterator::new(iters).unwrap();
@@ -185,7 +167,11 @@ fn merge_large_ten_iterators() {
 
     // Verify sorted order
     for i in 1..result.len() {
-        assert!(result[i - 1].0 < result[i].0, "keys not sorted at index {}", i);
+        assert!(
+            result[i - 1].0 < result[i].0,
+            "keys not sorted at index {}",
+            i
+        );
     }
 }
 
@@ -202,10 +188,7 @@ fn merge_large_with_duplicates() {
             let value = format!("from_iter_{}", iter_idx);
             entries.push((key.into_bytes(), value.into_bytes()));
         }
-        iters.push(Box::new(VecIterator {
-            entries,
-            pos: 0,
-        }));
+        iters.push(Box::new(VecIterator { entries, pos: 0 }));
     }
 
     let mut merge = MergeIterator::new(iters).unwrap();
@@ -227,11 +210,11 @@ fn merge_tombstones_are_kept() {
     let tombstone: &[u8] = b"TOMBSTONE";
 
     let iter_newer = VecIterator::new(vec![
-        (b"a", tombstone),   // delete(a) in newer source
+        (b"a", tombstone), // delete(a) in newer source
         (b"c", b"val_c"),
     ]);
     let iter_older = VecIterator::new(vec![
-        (b"a", b"old_a"),    // old value for a
+        (b"a", b"old_a"), // old value for a
         (b"b", b"val_b"),
     ]);
 
@@ -249,11 +232,7 @@ fn merge_tombstones_are_kept() {
 
 #[test]
 fn merge_single_iterator() {
-    let iter = VecIterator::new(vec![
-        (b"a", b"1"),
-        (b"b", b"2"),
-        (b"c", b"3"),
-    ]);
+    let iter = VecIterator::new(vec![(b"a", b"1"), (b"b", b"2"), (b"c", b"3")]);
 
     let iters: Vec<Box<dyn StorageIterator>> = vec![Box::new(iter)];
     let mut merge = MergeIterator::new(iters).unwrap();
@@ -266,16 +245,8 @@ fn merge_single_iterator() {
 
 #[test]
 fn merge_seek_positions_correctly() {
-    let iter0 = VecIterator::new(vec![
-        (b"a", b"0"),
-        (b"c", b"0"),
-        (b"e", b"0"),
-    ]);
-    let iter1 = VecIterator::new(vec![
-        (b"b", b"1"),
-        (b"d", b"1"),
-        (b"f", b"1"),
-    ]);
+    let iter0 = VecIterator::new(vec![(b"a", b"0"), (b"c", b"0"), (b"e", b"0")]);
+    let iter1 = VecIterator::new(vec![(b"b", b"1"), (b"d", b"1"), (b"f", b"1")]);
 
     let iters: Vec<Box<dyn StorageIterator>> = vec![Box::new(iter0), Box::new(iter1)];
     let mut merge = MergeIterator::new(iters).unwrap();
@@ -293,14 +264,8 @@ fn merge_seek_positions_correctly() {
 
 #[test]
 fn merge_seek_to_nonexistent_key() {
-    let iter0 = VecIterator::new(vec![
-        (b"a", b"0"),
-        (b"d", b"0"),
-    ]);
-    let iter1 = VecIterator::new(vec![
-        (b"b", b"1"),
-        (b"e", b"1"),
-    ]);
+    let iter0 = VecIterator::new(vec![(b"a", b"0"), (b"d", b"0")]);
+    let iter1 = VecIterator::new(vec![(b"b", b"1"), (b"e", b"1")]);
 
     let iters: Vec<Box<dyn StorageIterator>> = vec![Box::new(iter0), Box::new(iter1)];
     let mut merge = MergeIterator::new(iters).unwrap();
@@ -328,9 +293,7 @@ fn merge_duplicate_key_across_three_sources() {
     let i1 = VecIterator::new(vec![(b"x", b"middle")]);
     let i2 = VecIterator::new(vec![(b"x", b"oldest")]);
 
-    let iters: Vec<Box<dyn StorageIterator>> = vec![
-        Box::new(i0), Box::new(i1), Box::new(i2),
-    ];
+    let iters: Vec<Box<dyn StorageIterator>> = vec![Box::new(i0), Box::new(i1), Box::new(i2)];
     let mut merge = MergeIterator::new(iters).unwrap();
 
     assert!(merge.is_valid());

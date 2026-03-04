@@ -57,7 +57,10 @@ fn block_full_returns_false() {
 
     // Second entry would push past 32 bytes
     let big_value = vec![0u8; 30];
-    assert!(!builder.add(b"c", &big_value), "should reject when block is full");
+    assert!(
+        !builder.add(b"c", &big_value),
+        "should reject when block is full"
+    );
 }
 
 // =============================================================================
@@ -115,5 +118,8 @@ fn estimated_size_tracks_growth() {
 fn first_entry_always_accepted() {
     let mut builder = BlockBuilder::new(8); // tiny block
     // This entry is larger than block_size, but it's the first one
-    assert!(builder.add(b"big_key", b"big_value"), "first entry should always be accepted");
+    assert!(
+        builder.add(b"big_key", b"big_value"),
+        "first entry should always be accepted"
+    );
 }

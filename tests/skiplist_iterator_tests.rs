@@ -1,8 +1,8 @@
 // M02: Skip List Iterator tests
 // Tests for iterating over skip list entries in sorted order.
 
-use lsm_engine::memtable::skiplist::SkipList;
 use lsm_engine::iterator::StorageIterator;
+use lsm_engine::memtable::skiplist::SkipList;
 
 // =============================================================================
 // Test 1: Empty iterator
@@ -136,7 +136,7 @@ fn iterator_seek_to_nonexistent_key() {
     sl.insert(b"e".to_vec(), b"5".to_vec());
 
     let mut iter = sl.iter();
-    iter.seek(b"b").unwrap();  // "b" doesn't exist, should land on "c"
+    iter.seek(b"b").unwrap(); // "b" doesn't exist, should land on "c"
 
     assert!(iter.is_valid());
     assert_eq!(iter.key(), b"c");
@@ -153,7 +153,7 @@ fn iterator_seek_past_end() {
     sl.insert(b"b".to_vec(), b"2".to_vec());
 
     let mut iter = sl.iter();
-    iter.seek(b"z").unwrap();  // "z" > all keys
+    iter.seek(b"z").unwrap(); // "z" > all keys
 
     assert!(!iter.is_valid());
 }
@@ -169,7 +169,7 @@ fn iterator_seek_to_beginning() {
     sl.insert(b"c".to_vec(), b"3".to_vec());
 
     let mut iter = sl.iter();
-    iter.seek(b"a").unwrap();  // "a" < all keys, lands on first
+    iter.seek(b"a").unwrap(); // "a" < all keys, lands on first
 
     assert!(iter.is_valid());
     assert_eq!(iter.key(), b"b");

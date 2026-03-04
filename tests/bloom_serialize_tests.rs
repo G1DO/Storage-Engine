@@ -98,7 +98,12 @@ fn test_serialized_size() {
     let bytes = bf.serialize();
 
     // Should be: 12 bytes header + (num_u64s * 8 bytes)
-    let num_u64s = bf.num_bits() / 64 + if bf.num_bits() % 64 > 0 { 1 } else { 0 };
+    let num_u64s = bf.num_bits() / 64
+        + if !bf.num_bits().is_multiple_of(64) {
+            1
+        } else {
+            0
+        };
     let expected_size = 12 + (num_u64s as usize * 8);
 
     assert_eq!(bytes.len(), expected_size);

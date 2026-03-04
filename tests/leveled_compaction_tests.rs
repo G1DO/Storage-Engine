@@ -1,5 +1,5 @@
-use lsm_engine::compaction::leveled::LeveledStrategy;
 use lsm_engine::compaction::CompactionStrategy;
+use lsm_engine::compaction::leveled::LeveledStrategy;
 use lsm_engine::sstable::footer::SSTableMeta;
 
 // ---------------------------------------------------------------------------
@@ -42,10 +42,12 @@ fn all_levels_under_budget_no_compaction() {
     let strategy = test_strategy(); // L1 budget = 1000
 
     let levels = make_levels(vec![
-        vec![],                                              // L0 (not managed by leveled)
-        vec![make_sst(1, 1, b"a", b"m", 400),
-             make_sst(2, 1, b"n", b"z", 400)],              // L1 total = 800 < 1000
-        vec![make_sst(3, 2, b"a", b"z", 5000)],             // L2 total = 5000 < 10_000
+        vec![], // L0 (not managed by leveled)
+        vec![
+            make_sst(1, 1, b"a", b"m", 400),
+            make_sst(2, 1, b"n", b"z", 400),
+        ], // L1 total = 800 < 1000
+        vec![make_sst(3, 2, b"a", b"z", 5000)], // L2 total = 5000 < 10_000
     ]);
 
     assert!(strategy.pick_compaction(&levels).is_none());
@@ -69,10 +71,7 @@ fn single_level_under_budget_no_compaction() {
     let strategy = test_strategy();
 
     // Only L0 and L1, L1 under budget
-    let levels = make_levels(vec![
-        vec![],
-        vec![make_sst(1, 1, b"a", b"z", 999)],
-    ]);
+    let levels = make_levels(vec![vec![], vec![make_sst(1, 1, b"a", b"z", 999)]]);
 
     assert!(strategy.pick_compaction(&levels).is_none());
 }
@@ -86,12 +85,16 @@ fn l1_over_budget_picks_l1_sst_and_overlapping_l2() {
     let strategy = test_strategy(); // L1 budget = 1000
 
     let levels = make_levels(vec![
-        vec![],                                              // L0
-        vec![make_sst(1, 1, b"a", b"f", 600),
-             make_sst(2, 1, b"g", b"z", 600)],              // L1 total = 1200 > 1000
-        vec![make_sst(10, 2, b"a", b"d", 2000),
-             make_sst(11, 2, b"e", b"k", 2000),
-             make_sst(12, 2, b"p", b"z", 2000)],            // L2
+        vec![], // L0
+        vec![
+            make_sst(1, 1, b"a", b"f", 600),
+            make_sst(2, 1, b"g", b"z", 600),
+        ], // L1 total = 1200 > 1000
+        vec![
+            make_sst(10, 2, b"a", b"d", 2000),
+            make_sst(11, 2, b"e", b"k", 2000),
+            make_sst(12, 2, b"p", b"z", 2000),
+        ], // L2
     ]);
 
     let task = strategy.pick_compaction(&levels).expect("L1 over budget");
@@ -108,7 +111,12 @@ fn l1_over_budget_picks_l1_sst_and_overlapping_l2() {
     assert!(picked_id == 1 || picked_id == 2);
 
     // L2 inputs should be those overlapping with the picked L1 SSTable
-    let l2_inputs: Vec<u64> = task.inputs.iter().filter(|s| s.level == 2).map(|s| s.id).collect();
+    let l2_inputs: Vec<u64> = task
+        .inputs
+        .iter()
+        .filter(|s| s.level == 2)
+        .map(|s| s.id)
+        .collect();
 
     if picked_id == 1 {
         // SST 1: [a, f] overlaps with L2 SST 10 [a,d] and SST 11 [e,k]
@@ -129,9 +137,11 @@ fn l1_over_budget_no_l2_sstables() {
 
     let levels = make_levels(vec![
         vec![],
-        vec![make_sst(1, 1, b"a", b"m", 600),
-             make_sst(2, 1, b"n", b"z", 600)],              // L1 = 1200 > 1000
-        vec![],                                              // L2 empty
+        vec![
+            make_sst(1, 1, b"a", b"m", 600),
+            make_sst(2, 1, b"n", b"z", 600),
+        ], // L1 = 1200 > 1000
+        vec![], // L2 empty
     ]);
 
     let task = strategy.pick_compaction(&levels).expect("L1 over budget");
@@ -148,9 +158,11 @@ fn l1_over_budget_no_l2_overlap() {
 
     let levels = make_levels(vec![
         vec![],
-        vec![make_sst(1, 1, b"a", b"c", 600),
-             make_sst(2, 1, b"d", b"f", 600)],              // L1 = 1200 > 1000
-        vec![make_sst(10, 2, b"x", b"z", 5000)],            // L2: no overlap with L1
+        vec![
+            make_sst(1, 1, b"a", b"c", 600),
+            make_sst(2, 1, b"d", b"f", 600),
+        ], // L1 = 1200 > 1000
+        vec![make_sst(10, 2, b"x", b"z", 5000)], // L2: no overlap with L1
     ]);
 
     let task = strategy.pick_compaction(&levels).expect("L1 over budget");
@@ -170,12 +182,16 @@ fn l2_over_budget_compacts_to_l3() {
     let strategy = test_strategy(); // L2 budget = 10_000
 
     let levels = make_levels(vec![
-        vec![],                                              // L0
-        vec![make_sst(1, 1, b"a", b"z", 500)],              // L1 under budget
-        vec![make_sst(10, 2, b"a", b"m", 6000),
-             make_sst(11, 2, b"n", b"z", 6000)],            // L2 = 12_000 > 10_000
-        vec![make_sst(20, 3, b"a", b"g", 20000),
-             make_sst(21, 3, b"h", b"z", 20000)],           // L3
+        vec![],                                // L0
+        vec![make_sst(1, 1, b"a", b"z", 500)], // L1 under budget
+        vec![
+            make_sst(10, 2, b"a", b"m", 6000),
+            make_sst(11, 2, b"n", b"z", 6000),
+        ], // L2 = 12_000 > 10_000
+        vec![
+            make_sst(20, 3, b"a", b"g", 20000),
+            make_sst(21, 3, b"h", b"z", 20000),
+        ], // L3
     ]);
 
     let task = strategy.pick_compaction(&levels).expect("L2 over budget");
@@ -186,7 +202,8 @@ fn l2_over_budget_compacts_to_l3() {
 
     // L3 inputs should overlap with the picked L2 SSTable
     let l3_inputs: Vec<&SSTableMeta> = task.inputs.iter().filter(|s| s.level == 3).collect();
-    assert!(!l3_inputs.is_empty() || true, "L3 inputs depend on overlap");
+    // L3 inputs may or may not be empty depending on key range overlap
+    let _ = l3_inputs;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,8 +216,8 @@ fn picks_lowest_overflowing_level_first() {
 
     let levels = make_levels(vec![
         vec![],
-        vec![make_sst(1, 1, b"a", b"z", 1500)],            // L1 = 1500 > 1000
-        vec![make_sst(10, 2, b"a", b"z", 15000)],           // L2 = 15000 > 10_000
+        vec![make_sst(1, 1, b"a", b"z", 1500)], // L1 = 1500 > 1000
+        vec![make_sst(10, 2, b"a", b"z", 15000)], // L2 = 15000 > 10_000
         vec![],
     ]);
 
@@ -222,10 +239,10 @@ fn deepest_level_over_budget_no_compaction() {
     let strategy = LeveledStrategy::new(1000, 10, 3);
 
     let levels = make_levels(vec![
-        vec![],                                              // L0
-        vec![make_sst(1, 1, b"a", b"z", 500)],              // L1 under budget
-        vec![make_sst(10, 2, b"a", b"z", 500)],             // L2 under budget
-        vec![make_sst(20, 3, b"a", b"z", 999999)],          // L3 over budget but nowhere to go
+        vec![],                                    // L0
+        vec![make_sst(1, 1, b"a", b"z", 500)],     // L1 under budget
+        vec![make_sst(10, 2, b"a", b"z", 500)],    // L2 under budget
+        vec![make_sst(20, 3, b"a", b"z", 999999)], // L3 over budget but nowhere to go
     ]);
 
     // No compaction: the deepest level can't push further
@@ -242,11 +259,7 @@ fn budget_scales_with_multiplier() {
     let strategy = LeveledStrategy::new(500, 5, 4);
 
     // L1 = 600 > 500 → should compact
-    let levels = make_levels(vec![
-        vec![],
-        vec![make_sst(1, 1, b"a", b"z", 600)],
-        vec![],
-    ]);
+    let levels = make_levels(vec![vec![], vec![make_sst(1, 1, b"a", b"z", 600)], vec![]]);
 
     assert!(strategy.pick_compaction(&levels).is_some());
 
@@ -284,15 +297,22 @@ fn all_l2_sstables_overlap_with_picked_l1() {
     // All L2 SSTables overlap with it
     let levels = make_levels(vec![
         vec![],
-        vec![make_sst(1, 1, b"a", b"z", 1500)],            // L1 over budget
-        vec![make_sst(10, 2, b"a", b"f", 1000),
-             make_sst(11, 2, b"g", b"m", 1000),
-             make_sst(12, 2, b"n", b"z", 1000)],            // all overlap [a,z]
+        vec![make_sst(1, 1, b"a", b"z", 1500)], // L1 over budget
+        vec![
+            make_sst(10, 2, b"a", b"f", 1000),
+            make_sst(11, 2, b"g", b"m", 1000),
+            make_sst(12, 2, b"n", b"z", 1000),
+        ], // all overlap [a,z]
     ]);
 
     let task = strategy.pick_compaction(&levels).expect("L1 over budget");
 
-    let l2_ids: Vec<u64> = task.inputs.iter().filter(|s| s.level == 2).map(|s| s.id).collect();
+    let l2_ids: Vec<u64> = task
+        .inputs
+        .iter()
+        .filter(|s| s.level == 2)
+        .map(|s| s.id)
+        .collect();
     assert_eq!(l2_ids.len(), 3, "all L2 SSTables overlap with [a,z]");
     assert!(l2_ids.contains(&10));
     assert!(l2_ids.contains(&11));
@@ -306,15 +326,22 @@ fn only_some_l2_sstables_overlap() {
     // L1 has narrow SSTable [d, g]
     let levels = make_levels(vec![
         vec![],
-        vec![make_sst(1, 1, b"d", b"g", 1500)],            // L1 over budget
-        vec![make_sst(10, 2, b"a", b"c", 1000),             // no overlap (c < d)
-             make_sst(11, 2, b"e", b"f", 1000),             // overlaps [d,g]
-             make_sst(12, 2, b"h", b"z", 1000)],            // no overlap (h > g)
+        vec![make_sst(1, 1, b"d", b"g", 1500)], // L1 over budget
+        vec![
+            make_sst(10, 2, b"a", b"c", 1000), // no overlap (c < d)
+            make_sst(11, 2, b"e", b"f", 1000), // overlaps [d,g]
+            make_sst(12, 2, b"h", b"z", 1000),
+        ], // no overlap (h > g)
     ]);
 
     let task = strategy.pick_compaction(&levels).expect("L1 over budget");
 
-    let l2_ids: Vec<u64> = task.inputs.iter().filter(|s| s.level == 2).map(|s| s.id).collect();
+    let l2_ids: Vec<u64> = task
+        .inputs
+        .iter()
+        .filter(|s| s.level == 2)
+        .map(|s| s.id)
+        .collect();
     assert_eq!(l2_ids.len(), 1);
     assert!(l2_ids.contains(&11));
     assert!(!l2_ids.contains(&10));
@@ -331,10 +358,12 @@ fn l0_sstables_ignored_by_leveled_strategy() {
 
     // Even if L0 has tons of SSTables, leveled doesn't trigger on L0
     let levels = make_levels(vec![
-        vec![make_sst(1, 0, b"a", b"z", 9999),
-             make_sst(2, 0, b"a", b"z", 9999),
-             make_sst(3, 0, b"a", b"z", 9999)],
-        vec![make_sst(10, 1, b"a", b"z", 500)],             // L1 under budget
+        vec![
+            make_sst(1, 0, b"a", b"z", 9999),
+            make_sst(2, 0, b"a", b"z", 9999),
+            make_sst(3, 0, b"a", b"z", 9999),
+        ],
+        vec![make_sst(10, 1, b"a", b"z", 500)], // L1 under budget
         vec![],
     ]);
 
@@ -351,7 +380,7 @@ fn exactly_at_budget_no_compaction() {
 
     let levels = make_levels(vec![
         vec![],
-        vec![make_sst(1, 1, b"a", b"z", 1000)],            // L1 = 1000, exactly at budget
+        vec![make_sst(1, 1, b"a", b"z", 1000)], // L1 = 1000, exactly at budget
         vec![],
     ]);
 
@@ -365,7 +394,7 @@ fn one_byte_over_budget_triggers() {
 
     let levels = make_levels(vec![
         vec![],
-        vec![make_sst(1, 1, b"a", b"z", 1001)],            // L1 = 1001, just over
+        vec![make_sst(1, 1, b"a", b"z", 1001)], // L1 = 1001, just over
         vec![],
     ]);
 

@@ -47,7 +47,10 @@ fn key_in_l0_sstable_found() {
 
     // Open and read
     let sstable = SSTable::open(&path).unwrap();
-    assert_eq!(sstable.get(b"charlie").unwrap(), Some(b"value_charlie".to_vec()));
+    assert_eq!(
+        sstable.get(b"charlie").unwrap(),
+        Some(b"value_charlie".to_vec())
+    );
 }
 
 // =============================================================================
@@ -60,8 +63,12 @@ fn key_in_l1_sstable_found() {
 
     // Build L1 SSTable
     let mut builder = SSTableBuilder::new(&path, 2, 4096).unwrap();
-    builder.add(b"eve".to_vec().as_slice(), b"value_eve").unwrap();
-    builder.add(b"frank".to_vec().as_slice(), b"value_frank").unwrap();
+    builder
+        .add(b"eve".to_vec().as_slice(), b"value_eve")
+        .unwrap();
+    builder
+        .add(b"frank".to_vec().as_slice(), b"value_frank")
+        .unwrap();
     builder.finish().unwrap();
 
     // Open and read
@@ -91,9 +98,12 @@ fn key_updated_returns_newest_from_memtable() {
     // Read order: memtable first
     // memtable has the key, so we return that and don't check L1
     assert_eq!(memtable.get(b"george"), Some(b"new_value".as_slice()));
-    
+
     // Verify L1 has old value (for understanding)
-    assert_eq!(l1_table.get(b"george").unwrap(), Some(b"old_value".to_vec()));
+    assert_eq!(
+        l1_table.get(b"george").unwrap(),
+        Some(b"old_value".to_vec())
+    );
 }
 
 // =============================================================================
@@ -106,7 +116,9 @@ fn key_deleted_tombstone_hides_old_value() {
     let l1_path = dir.path().join("l1_deleted.sst");
 
     let mut builder = SSTableBuilder::new(&l1_path, 4, 4096).unwrap();
-    builder.add(b"helen".to_vec().as_slice(), b"value_helen").unwrap();
+    builder
+        .add(b"helen".to_vec().as_slice(), b"value_helen")
+        .unwrap();
     builder.finish().unwrap();
 
     let l1_table = SSTable::open(&l1_path).unwrap();
@@ -119,9 +131,12 @@ fn key_deleted_tombstone_hides_old_value() {
     // Read order: check memtable first
     // memtable has tombstone for the key, return None (don't check L1)
     assert_eq!(memtable.get(b"helen"), None);
-    
+
     // Verify L1 has the value (but we wouldn't read it due to tombstone)
-    assert_eq!(l1_table.get(b"helen").unwrap(), Some(b"value_helen".to_vec()));
+    assert_eq!(
+        l1_table.get(b"helen").unwrap(),
+        Some(b"value_helen".to_vec())
+    );
 }
 
 // =============================================================================
@@ -133,7 +148,7 @@ fn key_not_found_anywhere_returns_none() {
 
     // Key not in memtable
     assert_eq!(memtable.get(b"nonexistent"), None);
-    
+
     // In a full DB, this would:
     // 1. Check active memtable → miss
     // 2. Check immutable memtable → miss
@@ -218,8 +233,11 @@ fn read_order_memtable_before_l0() {
     memtable.put(b"shared_key".to_vec(), b"memtable_value".to_vec());
 
     // Reading memtable first gives us the newest value
-    assert_eq!(memtable.get(b"shared_key"), Some(b"memtable_value".as_slice()));
-    
+    assert_eq!(
+        memtable.get(b"shared_key"),
+        Some(b"memtable_value".as_slice())
+    );
+
     // L0 has stale data (wouldn't be read due to early termination)
     assert_eq!(sst.get(b"shared_key").unwrap(), Some(b"l0_value".to_vec()));
 }

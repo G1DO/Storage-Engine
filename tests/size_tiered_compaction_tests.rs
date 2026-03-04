@@ -1,5 +1,5 @@
-use lsm_engine::compaction::size_tiered::SizeTieredStrategy;
 use lsm_engine::compaction::CompactionStrategy;
+use lsm_engine::compaction::size_tiered::SizeTieredStrategy;
 use lsm_engine::sstable::footer::SSTableMeta;
 
 // ---------------------------------------------------------------------------
@@ -54,7 +54,9 @@ fn at_threshold_triggers_compaction_no_l1() {
         vec![], // no L1 SSTables
     );
 
-    let task = strategy.pick_compaction(&levels).expect("should trigger compaction");
+    let task = strategy
+        .pick_compaction(&levels)
+        .expect("should trigger compaction");
 
     // All 4 L0 SSTables should be in inputs
     assert_eq!(task.inputs.len(), 4);
@@ -88,7 +90,9 @@ fn at_threshold_includes_overlapping_l1() {
         ],
     );
 
-    let task = strategy.pick_compaction(&levels).expect("should trigger compaction");
+    let task = strategy
+        .pick_compaction(&levels)
+        .expect("should trigger compaction");
 
     // 4 L0 + 3 overlapping L1 = 7 total
     assert_eq!(task.inputs.len(), 7);
@@ -112,12 +116,12 @@ fn no_l1_overlap_only_l0_in_inputs() {
             make_sst(3, 0, b"c", b"d"),
             make_sst(4, 0, b"a", b"d"),
         ],
-        vec![
-            make_sst(10, 1, b"x", b"z"),
-        ],
+        vec![make_sst(10, 1, b"x", b"z")],
     );
 
-    let task = strategy.pick_compaction(&levels).expect("should trigger compaction");
+    let task = strategy
+        .pick_compaction(&levels)
+        .expect("should trigger compaction");
 
     // Only 4 L0, the L1 SSTable doesn't overlap
     assert_eq!(task.inputs.len(), 4);
@@ -147,15 +151,17 @@ fn partial_l1_overlap() {
         ],
     );
 
-    let task = strategy.pick_compaction(&levels).expect("should trigger compaction");
+    let task = strategy
+        .pick_compaction(&levels)
+        .expect("should trigger compaction");
 
     // 4 L0 + 2 overlapping L1 = 6
     assert_eq!(task.inputs.len(), 6);
     assert_eq!(task.output_level, 1);
 
     let ids: Vec<u64> = task.inputs.iter().map(|s| s.id).collect();
-    assert!(ids.contains(&10));  // [a-f] overlaps
-    assert!(ids.contains(&11));  // [g-n] overlaps
+    assert!(ids.contains(&10)); // [a-f] overlaps
+    assert!(ids.contains(&11)); // [g-n] overlaps
     assert!(!ids.contains(&12)); // [o-z] does NOT overlap
 }
 
@@ -175,12 +181,11 @@ fn empty_levels_no_compaction() {
 #[test]
 fn threshold_of_one() {
     let strategy = SizeTieredStrategy::new(1);
-    let levels = make_levels(
-        vec![make_sst(1, 0, b"a", b"z")],
-        vec![],
-    );
+    let levels = make_levels(vec![make_sst(1, 0, b"a", b"z")], vec![]);
 
-    let task = strategy.pick_compaction(&levels).expect("threshold=1 should trigger");
+    let task = strategy
+        .pick_compaction(&levels)
+        .expect("threshold=1 should trigger");
     assert_eq!(task.inputs.len(), 1);
     assert_eq!(task.output_level, 1);
 }
@@ -199,7 +204,9 @@ fn above_threshold_also_triggers() {
         vec![],
     );
 
-    let task = strategy.pick_compaction(&levels).expect("above threshold should trigger");
+    let task = strategy
+        .pick_compaction(&levels)
+        .expect("above threshold should trigger");
     // All 5 L0 SSTables included
     assert_eq!(task.inputs.len(), 5);
 }
