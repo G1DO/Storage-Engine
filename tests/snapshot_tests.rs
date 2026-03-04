@@ -68,7 +68,7 @@ fn snapshot_sees_old_values_after_delete() {
 #[test]
 #[ignore]
 fn snapshot_isolated_from_compaction() {
-    let (dir, db) = open_temp_db();
+    let (_dir, db) = open_temp_db();
 
     // Insert many keys and flush so SSTables exist.
     for i in 0..100u8 {
@@ -87,7 +87,7 @@ fn snapshot_isolated_from_compaction() {
     // Snapshot scans must still return data from the pre-compaction view.
     let start = b"k000";
     let end = b"k255";
-    let mut it = snap.scan(start, end).unwrap();
+    let it = snap.scan(start, end).unwrap();
     // If implementation returns a Scanner that implements iterator-like
     // behavior via StorageIterator, advance and assert it's valid.
     assert!(it.is_valid());
@@ -113,8 +113,9 @@ fn multiple_snapshots_different_views() {
 
 #[test]
 #[ignore]
+#[allow(clippy::drop_non_drop)]
 fn snapshot_release_allows_cleanup() {
-    let (dir, db) = open_temp_db();
+    let (_dir, db) = open_temp_db();
 
     // Put and flush to create SSTables on disk.
     db.put(b"x", b"v").unwrap();
@@ -126,7 +127,7 @@ fn snapshot_release_allows_cleanup() {
     db.compact_range(None, None).unwrap();
 
     // Check SSTable files still exist while snapshot alive.
-    let files_before: Vec<_> = std::fs::read_dir(dir.path())
+    let files_before: Vec<_> = std::fs::read_dir(_dir.path())
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
@@ -137,7 +138,7 @@ fn snapshot_release_allows_cleanup() {
     drop(snap);
     db.compact_range(None, None).unwrap();
 
-    let files_after: Vec<_> = std::fs::read_dir(dir.path())
+    let files_after: Vec<_> = std::fs::read_dir(_dir.path())
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
@@ -154,6 +155,6 @@ fn snapshot_on_empty_db() {
     let snap = db.snapshot();
     assert_eq!(snap.get(b"missing").unwrap(), None);
 
-    let mut scanner = snap.scan(b"a", b"z").unwrap();
+    let scanner = snap.scan(b"a", b"z").unwrap();
     assert!(!scanner.is_valid());
 }
