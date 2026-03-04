@@ -56,7 +56,7 @@ impl BloomFilter {
         let num_hashes = num_hashes.max(1); // At least 1 hash
 
         // Allocate bit array (packed into u64s)
-        let num_u64s = ((num_bits as usize) + 63) / 64;
+        let num_u64s = (num_bits as usize).div_ceil(64);
         let bits = vec![0u64; num_u64s];
 
         Self {
@@ -124,7 +124,9 @@ impl BloomFilter {
         use crate::error::Error;
 
         if data.len() < 12 {
-            return Err(Error::Corruption("bloom filter too short for header".into()));
+            return Err(Error::Corruption(
+                "bloom filter too short for header".into(),
+            ));
         }
 
         let num_hashes = u32::from_le_bytes(data[0..4].try_into().unwrap());
@@ -132,7 +134,7 @@ impl BloomFilter {
         let num_u64s = u32::from_le_bytes(data[8..12].try_into().unwrap());
 
         // Validate num_u64s matches num_bits
-        let expected_u64s = ((num_bits as usize) + 63) / 64;
+        let expected_u64s = (num_bits as usize).div_ceil(64);
         if num_u64s as usize != expected_u64s {
             return Err(Error::Corruption(format!(
                 "bloom filter num_u64s mismatch: got {}, expected {}",
