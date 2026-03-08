@@ -62,6 +62,8 @@ pub struct DB {
     pub active_memtable: Arc<std::sync::RwLock<MemTable>>,
     pub immutable_memtable: Option<Arc<MemTable>>,
     pub version_set: Arc<VersionSet>,
+    /// Next sequence number for writes (monotonic)
+    pub next_sequence: std::sync::Arc<std::sync::atomic::AtomicU64>,
     // TODO [M32]: Additional fields
     //   - options: Options
     //   - path: PathBuf
@@ -80,12 +82,35 @@ impl DB {
     /// 3. Find and replay WAL files → reconstruct memtable
     /// 4. Ready to serve
     pub fn open(_path: &Path, _options: Options) -> Result<Self> {
-        todo!("[M32]: Full open sequence with recovery")
+        // Minimal open: initialize version set and memtable manager.
+        let version_set = Arc::new(VersionSet::new(_options.max_levels));
+        let active = Arc::new(std::sync::RwLock::new(MemTable::new(_options.memtable_size)));
+
+        Ok(DB {
+            active_memtable: active,
+            immutable_memtable: None,
+            version_set,
+            next_sequence: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1)),
+        })
     }
 
     /// Insert or update a key-value pair.
     pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
-        todo!("[M32]: WAL append → memtable put → maybe flush")
+        // Minimal put: allocate sequence, write into active memtable.
+        let seq = self.next_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+        // For now we store raw key/value in memtable; later this will store InternalKey
+        let mut active = self.active_memtable.write().unwrap();
+        active.put(_key.to_vec(), _value.to_vec());
+
+        // If memtable full, freeze and schedule flush (not implemented yet)
+        if active.is_full() {
+            // Move active to immutable and leave placeholder for flush
+            let manager = crate::memtable::MemTableManager::new(active.size());
+            let _ = manager; // TODO: integrate
+        }
+
+        Ok(())
     }
 
     /// Retrieve the value for a key.
@@ -153,7 +178,11 @@ impl DB {
 
     /// Delete a key (writes a tombstone).
     pub fn delete(&self, _key: &[u8]) -> Result<()> {
-        todo!("[M32]: WAL append delete → memtable tombstone")
+        // Minimal delete: allocate sequence and write tombstone into memtable
+        let seq = self.next_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let mut active = self.active_memtable.write().unwrap();
+        active.delete(_key.to_vec());
+        Ok(())
     }
 
     /// Iterate over a range of keys [start, end).
@@ -163,7 +192,11 @@ impl DB {
 
     /// Create a consistent snapshot of the database.
     pub fn snapshot(&self) -> snapshot::Snapshot {
-        todo!("[M26]: Capture current memtable + version references")
+        // Capture current sequence and VersionSet reference.
+        let seq = self.next_sequence.load(std::sync::atomic::Ordering::SeqCst);
+        let version = self.version_set.current();
+
+        snapshot::Snapshot { seq, version }
     }
 
     /// Force flush the active memtable to disk.
