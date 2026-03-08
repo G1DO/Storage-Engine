@@ -35,7 +35,16 @@ pub struct Options {
 
 impl Default for Options {
     fn default() -> Self {
-        todo!("[M32]: Return sensible defaults")
+        Self {
+            memtable_size: 4 * 1024 * 1024,      // 4 MB
+            block_size: 4 * 1024,                  // 4 KB
+            bloom_bits_per_key: 10,                // ~1% FPR
+            max_levels: 7,
+            level_size_multiplier: 10,
+            block_cache_size: 8 * 1024 * 1024,    // 8 MB
+            sync_policy: SyncPolicy::EveryWrite,
+            compaction_style: CompactionStyle::Leveled,
+        }
     }
 }
 

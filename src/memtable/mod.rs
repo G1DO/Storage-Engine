@@ -61,6 +61,11 @@ impl MemTable {
     pub fn is_full(&self) -> bool {
         self.data.size_bytes() >= self.size_limit
     }
+
+    /// Check if the memtable has no entries.
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
 }
 
 /// Thread-safe manager for active and immutable memtables.

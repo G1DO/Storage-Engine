@@ -57,6 +57,14 @@ impl VersionSet {
         }
     }
 
+    /// Create a VersionSet from recovered state (manifest replay).
+    pub fn new_from(version: Version, next_sst_id: u64) -> Self {
+        Self {
+            current: Arc::new(RwLock::new(version)),
+            next_sst_id: AtomicU64::new(next_sst_id),
+        }
+    }
+
     pub fn install(&self, new_version: Version) {
         *self.current.write().unwrap() = new_version;
     }
