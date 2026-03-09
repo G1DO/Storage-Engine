@@ -123,6 +123,7 @@ fn decode_meta_with_consumed(data: &[u8]) -> Result<(SSTableMeta, usize)> {
 /// Record 3: CompactionComplete { added: [id:3@L1], removed: [1, 2] }
 /// ```
 pub struct Manifest {
+    #[allow(dead_code)] // reserved for M29 manifest compaction
     path: PathBuf,
     // File handle opened for append/read
     file: std::fs::File,

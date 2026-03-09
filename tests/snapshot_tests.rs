@@ -8,7 +8,6 @@
 
 use tempfile::tempdir;
 
-use lsm_engine::iterator::StorageIterator;
 use lsm_engine::{DB, Options};
 
 // Helper: open a temporary DB. When the DB API is implemented this
