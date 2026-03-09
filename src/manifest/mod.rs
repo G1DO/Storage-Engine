@@ -143,7 +143,7 @@ impl Manifest {
             .create(true)
             .read(true)
             .append(true)
-            .open(&_path)?;
+            .open(_path)?;
 
         // Read entire file to replay records
         let mut data = Vec::new();
@@ -258,7 +258,7 @@ impl Manifest {
         }
 
         // If file was non-empty but we parsed zero valid records, treat as corruption
-        if data.len() > 0 && parsed == 0 {
+        if !data.is_empty() && parsed == 0 {
             return Err(Error::Corruption("no valid manifest records".into()));
         }
 
