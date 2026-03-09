@@ -9,7 +9,6 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::path::PathBuf;
 
 // TODO [M27]: Implement manifest writer
-// TODO [M29]: Implement manifest compaction (snapshot current version)
 
 /// Types of records stored in the manifest.
 ///
@@ -111,6 +110,53 @@ fn decode_meta_with_consumed(data: &[u8]) -> Result<(SSTableMeta, usize)> {
     ))
 }
 
+// Encode a full version snapshot: [log_number(8)][next_sst_id(8)][num_levels(4)]
+// then for each level: [num_ssts(4)][encoded metas...]
+fn encode_snapshot(version: &version::Version, log_number: u64, next_sst_id: u64) -> Vec<u8> {
+    let mut buf = Vec::with_capacity(256);
+    buf.extend_from_slice(&log_number.to_le_bytes());
+    buf.extend_from_slice(&next_sst_id.to_le_bytes());
+    buf.extend_from_slice(&(version.levels.len() as u32).to_le_bytes());
+    for level in &version.levels {
+        buf.extend_from_slice(&(level.len() as u32).to_le_bytes());
+        for meta in level {
+            buf.extend_from_slice(&encode_meta(meta));
+        }
+    }
+    buf
+}
+
+fn decode_snapshot(data: &[u8]) -> Result<(version::Version, u64, u64)> {
+    let mut p = 0usize;
+    if p + 8 + 8 + 4 > data.len() {
+        return Err(Error::Corruption("snapshot too short".into()));
+    }
+    let log_number = u64::from_le_bytes(data[p..p + 8].try_into().unwrap());
+    p += 8;
+    let next_sst_id = u64::from_le_bytes(data[p..p + 8].try_into().unwrap());
+    p += 8;
+    let num_levels = u32::from_le_bytes(data[p..p + 4].try_into().unwrap()) as usize;
+    p += 4;
+
+    let mut levels = Vec::with_capacity(num_levels);
+    for _ in 0..num_levels {
+        if p + 4 > data.len() {
+            return Err(Error::Corruption("snapshot level count truncated".into()));
+        }
+        let num_ssts = u32::from_le_bytes(data[p..p + 4].try_into().unwrap()) as usize;
+        p += 4;
+        let mut ssts = Vec::with_capacity(num_ssts);
+        for _ in 0..num_ssts {
+            let (meta, consumed) = decode_meta_with_consumed(&data[p..])?;
+            p += consumed;
+            ssts.push(meta);
+        }
+        levels.push(ssts);
+    }
+
+    Ok((version::Version { levels }, log_number, next_sst_id))
+}
+
 /// The manifest: a durable log of database structure changes.
 ///
 /// Reuses the WAL format (CRC + records) — same append-only,
@@ -123,7 +169,6 @@ fn decode_meta_with_consumed(data: &[u8]) -> Result<(SSTableMeta, usize)> {
 /// Record 3: CompactionComplete { added: [id:3@L1], removed: [1, 2] }
 /// ```
 pub struct Manifest {
-    #[allow(dead_code)] // reserved for M29 manifest compaction
     path: PathBuf,
     // File handle opened for append/read
     file: std::fs::File,
@@ -249,6 +294,16 @@ impl Manifest {
                     }
                     log_number = u64::from_le_bytes(payload[1..9].try_into().unwrap());
                 }
+                4 => {
+                    // VersionSnapshot — reset state to the snapshot
+                    let (snap_version, snap_log, snap_next) =
+                        decode_snapshot(&payload[1..])?;
+                    version = snap_version;
+                    log_number = snap_log;
+                    // next_sst_id is stored as the actual next value,
+                    // so max_sst_id = next_sst_id - 1
+                    max_sst_id = if snap_next > 0 { snap_next - 1 } else { 0 };
+                }
                 _ => {
                     // unknown record type — stop
                     break;
@@ -281,6 +336,10 @@ impl Manifest {
         append_record(&mut self.file, &payload)?;
 
         // update in-memory version
+        let new_next = _new_sst.id + 1;
+        if new_next > self.next_sst_id {
+            self.next_sst_id = new_next;
+        }
         let lvl = _new_sst.level as usize;
         if self.current_version.levels.len() <= lvl {
             self.current_version.levels.resize(lvl + 1, Vec::new());
@@ -317,6 +376,10 @@ impl Manifest {
         }
         // apply additions
         for m in _added.into_iter() {
+            let new_next = m.id + 1;
+            if new_next > self.next_sst_id {
+                self.next_sst_id = new_next;
+            }
             let lvl = m.level as usize;
             if self.current_version.levels.len() <= lvl {
                 self.current_version.levels.resize(lvl + 1, Vec::new());
@@ -354,8 +417,43 @@ impl Manifest {
     }
 
     /// Compact the manifest: snapshot current version to a new file.
-    /// The old manifest can then be deleted.
+    ///
+    /// 1. Encode the entire current state as a single VersionSnapshot record
+    /// 2. Write it to a temp file (MANIFEST.compact.tmp)
+    /// 3. fsync the temp file
+    /// 4. Atomically rename temp → MANIFEST (safe on POSIX)
+    /// 5. Reopen the file handle for future appends
     pub fn compact(&mut self) -> Result<()> {
-        todo!("[M29]: Write full Version snapshot, rotate manifest file")
+        let tmp_path = self.path.with_extension("compact.tmp");
+
+        // 1-3: Write snapshot to temp file
+        {
+            let mut tmp_file = OpenOptions::new()
+                .create(true)
+                .write(true)
+                .truncate(true)
+                .open(&tmp_path)?;
+
+            let mut payload = Vec::with_capacity(256);
+            payload.push(4u8); // tag
+            payload.extend_from_slice(&encode_snapshot(
+                &self.current_version,
+                self.log_number,
+                self.next_sst_id,
+            ));
+            append_record(&mut tmp_file, &payload)?;
+            // append_record already calls sync_all
+        }
+
+        // 4: Atomic rename
+        std::fs::rename(&tmp_path, &self.path)?;
+
+        // 5: Reopen for future appends
+        self.file = OpenOptions::new()
+            .read(true)
+            .append(true)
+            .open(&self.path)?;
+
+        Ok(())
     }
 }
