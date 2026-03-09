@@ -12,6 +12,7 @@ use std::sync::{Arc, RwLock};
 pub struct Snapshot {
     pub seq: u64,
     pub version: Arc<RwLock<Version>>,
+    pub path: std::path::PathBuf,
 }
 
 impl Snapshot {
@@ -25,22 +26,22 @@ impl Snapshot {
 
         // Search L0 newest-first
         for meta in version.level(0).iter().rev() {
-            let sst_path = std::path::PathBuf::from(format!("{:06}.sst", meta.id));
-            if let Ok(sst) = crate::sstable::reader::SSTable::open(&sst_path) {
-                if let Ok(Some(v)) = sst.get(_key) {
-                    return Ok(Some(v));
-                }
+            let sst_path = self.path.join(format!("{:06}.sst", meta.id));
+            if let Ok(sst) = crate::sstable::reader::SSTable::open(&sst_path)
+                && let Ok(Some(v)) = sst.get(_key)
+            {
+                return Ok(Some(v));
             }
         }
 
         // Search deeper levels
         for level in 1..version.levels.len() {
             for meta in version.level(level) {
-                let sst_path = std::path::PathBuf::from(format!("{:06}.sst", meta.id));
-                if let Ok(sst) = crate::sstable::reader::SSTable::open(&sst_path) {
-                    if let Ok(Some(v)) = sst.get(_key) {
-                        return Ok(Some(v));
-                    }
+                let sst_path = self.path.join(format!("{:06}.sst", meta.id));
+                if let Ok(sst) = crate::sstable::reader::SSTable::open(&sst_path)
+                    && let Ok(Some(v)) = sst.get(_key)
+                {
+                    return Ok(Some(v));
                 }
             }
         }

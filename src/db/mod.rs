@@ -1,17 +1,39 @@
 pub mod snapshot;
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 
 use crate::compaction::CompactionStyle;
 use crate::error::Result;
-use crate::manifest::version::VersionSet;
+use crate::iterator::StorageIterator;
+use crate::manifest::version::{Version, VersionSet};
+use crate::manifest::Manifest;
 use crate::memtable::MemTable;
+use crate::sstable::builder::SSTableBuilder;
 use crate::sstable::reader::SSTable;
+use crate::wal::record::{RecordType, WALRecord};
+use crate::wal::reader::WALReader;
+use crate::wal::writer::WALManager;
 use crate::wal::SyncPolicy;
 
-// TODO [M32]: Implement public DB API
 // TODO [M34]: Implement Stats / observability
+
+fn find_wal_files(dir: &Path) -> Vec<u64> {
+    let mut wal_numbers = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if let Some(filename) = entry.file_name().to_str()
+                && let Some(num_str) = filename.strip_suffix(".wal")
+                && let Ok(num) = num_str.parse::<u64>()
+            {
+                wal_numbers.push(num);
+            }
+        }
+    }
+    wal_numbers.sort_unstable();
+    wal_numbers
+}
 
 /// Configuration options for the storage engine.
 pub struct Options {
@@ -36,12 +58,12 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            memtable_size: 4 * 1024 * 1024,      // 4 MB
-            block_size: 4 * 1024,                  // 4 KB
-            bloom_bits_per_key: 10,                // ~1% FPR
+            memtable_size: 4 * 1024 * 1024,       // 4 MB
+            block_size: 4 * 1024,                   // 4 KB
+            bloom_bits_per_key: 10,                 // ~1% FPR
             max_levels: 7,
             level_size_multiplier: 10,
-            block_cache_size: 8 * 1024 * 1024,    // 8 MB
+            block_cache_size: 8 * 1024 * 1024,     // 8 MB
             sync_policy: SyncPolicy::EveryWrite,
             compaction_style: CompactionStyle::Leveled,
         }
@@ -67,17 +89,23 @@ pub struct Stats {
 /// Coordinates all components: memtable, WAL, SSTables, compaction,
 /// manifest, block cache.
 pub struct DB {
+    /// Database directory path.
+    path: PathBuf,
+    /// Memtable size limit (cached from Options for flush).
+    memtable_size: usize,
+    /// Block size (cached from Options for SSTable building).
+    block_size: usize,
     // M24: Read path sources
-    pub active_memtable: Arc<std::sync::RwLock<MemTable>>,
+    pub active_memtable: Arc<RwLock<MemTable>>,
     pub immutable_memtable: Option<Arc<MemTable>>,
     pub version_set: Arc<VersionSet>,
     /// Next sequence number for writes (monotonic)
-    pub next_sequence: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    pub next_sequence: Arc<AtomicU64>,
+    /// Manifest for recording structural changes (flush, compaction).
+    manifest: Mutex<Manifest>,
+    /// WAL manager for durable writes.
+    wal_manager: Mutex<WALManager>,
     // TODO [M32]: Additional fields
-    //   - options: Options
-    //   - path: PathBuf
-    //   - wal: WALManager
-    //   - manifest: Manifest
     //   - block_cache: BlockCache
     //   - compaction_scheduler: CompactionScheduler
 }
@@ -86,38 +114,81 @@ impl DB {
     /// Open or create a database at the given path.
     ///
     /// Recovery sequence:
-    /// 1. Read manifest → reconstruct Version
-    /// 2. Open all active SSTables
-    /// 3. Find and replay WAL files → reconstruct memtable
-    /// 4. Ready to serve
-    pub fn open(_path: &Path, _options: Options) -> Result<Self> {
-        // Minimal open: initialize version set and memtable manager.
-        let version_set = Arc::new(VersionSet::new(_options.max_levels));
-        let active = Arc::new(std::sync::RwLock::new(MemTable::new(_options.memtable_size)));
+    /// 1. Create directory if needed
+    /// 2. Read manifest → reconstruct Version + log_number + next_sst_id
+    /// 3. Find WAL files with id >= log_number, replay into memtable
+    /// 4. Create new WALManager for future writes
+    /// 5. Ready to serve
+    pub fn open(path: &Path, options: Options) -> Result<Self> {
+        // 1. Ensure the database directory exists
+        std::fs::create_dir_all(path)?;
+
+        // 2. Open manifest — replays all records to reconstruct Version
+        let manifest = Manifest::open(&path.join("MANIFEST"))?;
+        let log_number = manifest.log_number();
+        let next_sst_id = manifest.next_sst_id();
+        let version = manifest.current_version().clone();
+
+        // 3. Build VersionSet from recovered state
+        let version_set = Arc::new(VersionSet::new_from(version, next_sst_id));
+
+        // 4. Find and replay WAL files >= log_number
+        let wal_ids = find_wal_files(path);
+        let mut memtable = MemTable::new(options.memtable_size);
+        let mut record_count: u64 = 0;
+
+        for wal_id in wal_ids {
+            if wal_id < log_number {
+                continue; // this WAL's data is already in SSTables
+            }
+            let wal_path = path.join(format!("{:06}.wal", wal_id));
+            let reader = WALReader::new(&wal_path)?;
+            for record_result in reader.iter() {
+                let record = record_result?;
+                match record.record_type {
+                    RecordType::Put => memtable.put(record.key, record.value),
+                    RecordType::Delete => memtable.delete(record.key),
+                }
+                record_count += 1;
+            }
+        }
+
+        // 5. Create new WALManager for future writes
+        let wal_manager = WALManager::new(path, options.sync_policy)?;
+
+        // 6. Assemble DB
+        let memtable_size = options.memtable_size;
+        let block_size = options.block_size;
 
         Ok(DB {
-            active_memtable: active,
+            path: path.to_path_buf(),
+            memtable_size,
+            block_size,
+            active_memtable: Arc::new(RwLock::new(memtable)),
             immutable_memtable: None,
             version_set,
-            next_sequence: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(1)),
+            next_sequence: Arc::new(AtomicU64::new(record_count + 1)),
+            manifest: Mutex::new(manifest),
+            wal_manager: Mutex::new(wal_manager),
         })
     }
 
     /// Insert or update a key-value pair.
-    pub fn put(&self, _key: &[u8], _value: &[u8]) -> Result<()> {
-        // Minimal put: allocate sequence, write into active memtable.
-        let seq = self.next_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    ///
+    /// WAL-first: write to WAL for durability, then insert into memtable.
+    pub fn put(&self, key: &[u8], value: &[u8]) -> Result<()> {
+        let _seq = self.next_sequence.fetch_add(1, Ordering::SeqCst);
 
-        // For now we store raw key/value in memtable; later this will store InternalKey
-        let mut active = self.active_memtable.write().unwrap();
-        active.put(_key.to_vec(), _value.to_vec());
-
-        // If memtable full, freeze and schedule flush (not implemented yet)
-        if active.is_full() {
-            // Move active to immutable and leave placeholder for flush
-            let manager = crate::memtable::MemTableManager::new(active.size());
-            let _ = manager; // TODO: integrate
+        // WAL first — guarantees durability before acknowledging
+        {
+            let mut wal = self.wal_manager.lock().unwrap();
+            let record = WALRecord::put(key.to_vec(), value.to_vec());
+            wal.active_writer().append(&record)?;
         }
+
+        // Then memtable
+        let mut active = self.active_memtable.write().unwrap();
+        active.put(key.to_vec(), value.to_vec());
 
         Ok(())
     }
@@ -127,9 +198,7 @@ impl DB {
     /// Search order: active memtable → immutable memtable → L0 → L1 → ...
     /// Returns the newest version of the key, or None if not found.
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
-        // =====================================================================
-        // Task 1: Check active memtable
-        // =====================================================================
+        // Check active memtable
         {
             let memtable = self.active_memtable.read().unwrap();
             if let Some(value) = memtable.get(key) {
@@ -137,60 +206,56 @@ impl DB {
             }
         }
 
-        // =====================================================================
-        // Task 2: Check immutable memtable
-        // =====================================================================
+        // Check immutable memtable
         if let Some(immutable) = &self.immutable_memtable
             && let Some(value) = immutable.get(key)
         {
             return Ok(Some(value.to_vec()));
         }
 
-        // =====================================================================
-        // Task 3 & 4: Check L0 then L1+
-        // =====================================================================
+        // Check SSTables via Version (L0 newest-first, then L1+)
         let current_version = self.version_set.current();
         let version = current_version.read().unwrap();
 
-        // Task 3: Check L0 (all SSTables, newest first)
-        // L0 can have overlapping SSTables, so we must check ALL of them
+        // L0: check all SSTables, newest first (overlapping key ranges)
         for meta in version.level(0).iter().rev() {
-            let sst_path = PathBuf::from(format!("{:06}.sst", meta.id));
+            let sst_path = self.path.join(format!("{:06}.sst", meta.id));
             let sst = SSTable::open(&sst_path)?;
-
             if let Some(value) = sst.get(key)? {
                 return Ok(Some(value));
             }
         }
 
-        // Task 4: Check L1 and deeper
-        // L1+ have no overlaps, so at most ONE SSTable can contain the key.
-        // The SSTable.get() method already handles bloom filter checking internally.
+        // L1+: no overlaps, at most one SSTable contains the key
         for level in 1..version.levels.len() {
-            let ssts_at_level = version.level(level);
-
-            for meta in ssts_at_level {
-                let sst_path = PathBuf::from(format!("{:06}.sst", meta.id));
+            for meta in version.level(level) {
+                let sst_path = self.path.join(format!("{:06}.sst", meta.id));
                 let sst = SSTable::open(&sst_path)?;
-
-                // SSTable.get() internally checks bloom filter before binary search.
-                // If found, return immediately.
                 if let Some(value) = sst.get(key)? {
                     return Ok(Some(value));
                 }
             }
         }
 
-        // Key not found anywhere
         Ok(None)
     }
 
     /// Delete a key (writes a tombstone).
-    pub fn delete(&self, _key: &[u8]) -> Result<()> {
-        // Minimal delete: allocate sequence and write tombstone into memtable
-        let seq = self.next_sequence.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    ///
+    /// WAL-first: write tombstone to WAL, then to memtable.
+    pub fn delete(&self, key: &[u8]) -> Result<()> {
+        let _seq = self.next_sequence.fetch_add(1, Ordering::SeqCst);
+
+        // WAL first
+        {
+            let mut wal = self.wal_manager.lock().unwrap();
+            let record = WALRecord::delete(key.to_vec());
+            wal.active_writer().append(&record)?;
+        }
+
+        // Then memtable
         let mut active = self.active_memtable.write().unwrap();
-        active.delete(_key.to_vec());
+        active.delete(key.to_vec());
         Ok(())
     }
 
@@ -201,16 +266,76 @@ impl DB {
 
     /// Create a consistent snapshot of the database.
     pub fn snapshot(&self) -> snapshot::Snapshot {
-        // Capture current sequence and VersionSet reference.
-        let seq = self.next_sequence.load(std::sync::atomic::Ordering::SeqCst);
+        let seq = self.next_sequence.load(Ordering::SeqCst);
         let version = self.version_set.current();
 
-        snapshot::Snapshot { seq, version }
+        snapshot::Snapshot {
+            seq,
+            version,
+            path: self.path.clone(),
+        }
     }
 
-    /// Force flush the active memtable to disk.
+    /// Force flush the active memtable to disk as an SSTable.
+    ///
+    /// Crash-safe ordering:
+    /// 1. Swap active memtable → frozen, create new empty active
+    /// 2. Rotate WAL (new WAL for future writes)
+    /// 3. Build SSTable from frozen memtable
+    /// 4. Update manifest: record_flush + record_log_number
+    /// 5. Install new Version in VersionSet
+    /// 6. Delete old WAL (safe: SSTable is fsync'd, manifest updated)
     pub fn flush(&self) -> Result<()> {
-        todo!("[M32]: Freeze memtable, flush to SSTable")
+        // 1. Freeze: swap active memtable with a fresh empty one
+        let frozen = {
+            let mut active = self.active_memtable.write().unwrap();
+            if active.is_empty() {
+                return Ok(()); // nothing to flush
+            }
+            std::mem::replace(&mut *active, MemTable::new(self.memtable_size))
+        };
+
+        // 2. Rotate WAL — old WAL is now frozen alongside the memtable
+        let (old_wal_path, new_wal_id) = {
+            let mut wal = self.wal_manager.lock().unwrap();
+            let old_path = wal.rotate()?;
+            let new_id = wal.active_wal_id();
+            (old_path, new_id)
+        };
+
+        // 3. Build SSTable from frozen memtable
+        let sst_id = self.version_set.next_sst_id();
+        let sst_path = self.path.join(format!("{:06}.sst", sst_id));
+        let mut builder = SSTableBuilder::new(&sst_path, sst_id, self.block_size)?;
+
+        let mut iter = frozen.iter();
+        while iter.is_valid() {
+            builder.add(iter.key(), iter.value())?;
+            iter.next()?;
+        }
+        let meta = builder.finish()?;
+
+        // 4. Update manifest: record the new SSTable, then the new log_number
+        {
+            let mut manifest = self.manifest.lock().unwrap();
+            manifest.record_flush(meta.clone())?;
+            manifest.record_log_number(new_wal_id)?;
+        }
+
+        // 5. Install new Version with the SSTable added to L0
+        {
+            let current = self.version_set.current();
+            let old_version = current.read().unwrap();
+            let mut new_levels = old_version.levels.clone();
+            new_levels[0].push(meta);
+            drop(old_version);
+            self.version_set.install(Version { levels: new_levels });
+        }
+
+        // 6. Delete old WAL — safe because SSTable is fsync'd and manifest updated
+        let _ = WALManager::delete_wal(&old_wal_path);
+
+        Ok(())
     }
 
     /// Manually trigger compaction over a key range.
@@ -224,8 +349,22 @@ impl DB {
     }
 
     /// Close the database gracefully.
-    /// Flushes memtable, stops compaction, syncs manifest.
+    ///
+    /// Flushes any remaining memtable data, syncs the WAL.
     pub fn close(self) -> Result<()> {
-        todo!("[M32]: Flush, stop compaction, sync, close files")
+        // Flush if memtable has data
+        {
+            let memtable = self.active_memtable.read().unwrap();
+            if !memtable.is_empty() {
+                drop(memtable);
+                self.flush()?;
+            }
+        }
+
+        // Sync the active WAL
+        let mut wal = self.wal_manager.lock().unwrap();
+        wal.active_writer().sync()?;
+
+        Ok(())
     }
 }
