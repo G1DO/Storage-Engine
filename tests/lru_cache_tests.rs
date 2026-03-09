@@ -9,7 +9,6 @@ use lsm_engine::cache::lru::LRUCache;
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore]
 fn insert_within_capacity_all_present() {
     let mut cache = LRUCache::new(3);
     cache.insert("a", 1, 1);
@@ -23,7 +22,6 @@ fn insert_within_capacity_all_present() {
 }
 
 #[test]
-#[ignore]
 fn insert_over_capacity_evicts_oldest() {
     let mut cache = LRUCache::new(3);
     cache.insert("a", 1, 1);
@@ -41,7 +39,6 @@ fn insert_over_capacity_evicts_oldest() {
 }
 
 #[test]
-#[ignore]
 fn get_moves_to_most_recent() {
     let mut cache = LRUCache::new(3);
     cache.insert("a", 1, 1);
@@ -62,7 +59,6 @@ fn get_moves_to_most_recent() {
 }
 
 #[test]
-#[ignore]
 fn access_pattern_evicts_correct_entry() {
     let mut cache = LRUCache::new(2);
     cache.insert("a", 1, 1);
@@ -81,7 +77,6 @@ fn access_pattern_evicts_correct_entry() {
 }
 
 #[test]
-#[ignore]
 fn remove_frees_capacity() {
     let mut cache = LRUCache::new(3);
     cache.insert("a", 1, 1);
@@ -104,7 +99,6 @@ fn remove_frees_capacity() {
 }
 
 #[test]
-#[ignore]
 fn empty_cache_get_returns_none() {
     let mut cache: LRUCache<&str, i32> = LRUCache::new(3);
 
@@ -114,7 +108,6 @@ fn empty_cache_get_returns_none() {
 }
 
 #[test]
-#[ignore]
 fn insert_duplicate_key_updates_value() {
     let mut cache = LRUCache::new(3);
     cache.insert("x", 1, 1);
@@ -125,7 +118,6 @@ fn insert_duplicate_key_updates_value() {
 }
 
 #[test]
-#[ignore]
 fn insert_duplicate_key_updates_size() {
     let mut cache = LRUCache::new(3);
     cache.insert("x", 10, 2); // 2 bytes used
@@ -144,7 +136,6 @@ fn insert_duplicate_key_updates_size() {
 }
 
 #[test]
-#[ignore]
 fn eviction_cascades_for_large_entry() {
     let mut cache = LRUCache::new(3);
     cache.insert("a", 1, 1); // tail (LRU)
@@ -162,7 +153,6 @@ fn eviction_cascades_for_large_entry() {
 }
 
 #[test]
-#[ignore]
 fn remove_nonexistent_returns_none() {
     let mut cache: LRUCache<&str, i32> = LRUCache::new(3);
     cache.insert("a", 1, 1);
