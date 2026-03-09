@@ -163,6 +163,11 @@ impl WALManager {
         &self.active_path
     }
 
+    /// ID of the current active WAL file.
+    pub fn active_wal_id(&self) -> u64 {
+        self.next_wal_id - 1
+    }
+
     /// Scan directory for existing .wal files, return the highest ID found (0 if none).
     fn find_max_wal_id(dir: &Path) -> u64 {
         std::fs::read_dir(dir)

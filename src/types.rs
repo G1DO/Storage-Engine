@@ -30,7 +30,22 @@ pub struct InternalKey {
     pub value_type: ValueType,
 }
 
-// TODO [M01]: Implement Ord for InternalKey
-//   - Primary sort: user_key ascending (lexicographic)
-//   - Secondary sort: sequence descending (newest first)
-//   - This ordering is CRITICAL for correctness of reads and compaction
+// Implement ordering for InternalKey used by merge and skiplist comparisons.
+// Primary: user_key ascending; Secondary: sequence descending (newest first).
+use std::cmp::Ordering;
+
+impl PartialOrd for InternalKey {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for InternalKey {
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self.user_key.cmp(&other.user_key) {
+            Ordering::Less => Ordering::Less,
+            Ordering::Greater => Ordering::Greater,
+            Ordering::Equal => other.sequence.cmp(&self.sequence), // note: reverse for descending
+        }
+    }
+}
