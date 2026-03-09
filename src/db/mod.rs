@@ -7,15 +7,15 @@ use std::sync::{Arc, Mutex, RwLock};
 use crate::compaction::CompactionStyle;
 use crate::error::Result;
 use crate::iterator::StorageIterator;
-use crate::manifest::version::{Version, VersionSet};
 use crate::manifest::Manifest;
+use crate::manifest::version::{Version, VersionSet};
 use crate::memtable::MemTable;
 use crate::sstable::builder::SSTableBuilder;
 use crate::sstable::reader::SSTable;
-use crate::wal::record::{RecordType, WALRecord};
-use crate::wal::reader::WALReader;
-use crate::wal::writer::WALManager;
 use crate::wal::SyncPolicy;
+use crate::wal::reader::WALReader;
+use crate::wal::record::{RecordType, WALRecord};
+use crate::wal::writer::WALManager;
 
 // TODO [M34]: Implement Stats / observability
 
@@ -58,12 +58,12 @@ pub struct Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
-            memtable_size: 4 * 1024 * 1024,       // 4 MB
-            block_size: 4 * 1024,                   // 4 KB
-            bloom_bits_per_key: 10,                 // ~1% FPR
+            memtable_size: 4 * 1024 * 1024, // 4 MB
+            block_size: 4 * 1024,           // 4 KB
+            bloom_bits_per_key: 10,         // ~1% FPR
             max_levels: 7,
             level_size_multiplier: 10,
-            block_cache_size: 8 * 1024 * 1024,     // 8 MB
+            block_cache_size: 8 * 1024 * 1024, // 8 MB
             sync_policy: SyncPolicy::EveryWrite,
             compaction_style: CompactionStyle::Leveled,
         }
