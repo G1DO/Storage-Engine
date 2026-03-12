@@ -1,32 +1,25 @@
-// Snapshot tests (scaffold)
+// Snapshot tests
 //
-// These tests exercise M26: Snapshot Reads. They are currently marked
-// `#[ignore]` because the DB snapshot APIs and recovery/pinning logic
-// are not fully implemented yet (see TODOs in src/db and src/db/snapshot.rs).
-// Once M26 (and related M27/M28) are implemented, remove `#[ignore]` to
-// run them as part of the CI.
+// These tests exercise M26: Snapshot Reads. Tests requiring compact_range
+// (M32) remain #[ignore] until that is implemented.
 
 use tempfile::tempdir;
 
+use lsm_engine::iterator::StorageIterator;
 use lsm_engine::{DB, Options};
 
-// Helper: open a temporary DB. When the DB API is implemented this
-// will create files under the tempdir and return a handle.
 fn open_temp_db() -> (tempfile::TempDir, DB) {
     let dir = tempdir().expect("create temp dir");
-    // Options::default() is currently a todo!() placeholder. Running
-    // these tests requires implementing Options::default() & DB::open().
     let opts = Options::default();
     let db = DB::open(dir.path(), opts).expect("open db");
     (dir, db)
 }
 
 // ---------------------------------------------------------------------------
-// High priority snapshot tests (scaffolded)
+// Snapshot point-lookup tests
 // ---------------------------------------------------------------------------
 
 #[test]
-#[ignore]
 fn snapshot_sees_old_values_after_writes() {
     let (_dir, db) = open_temp_db();
 
@@ -46,7 +39,6 @@ fn snapshot_sees_old_values_after_writes() {
 }
 
 #[test]
-#[ignore]
 fn snapshot_sees_old_values_after_delete() {
     let (_dir, db) = open_temp_db();
 
@@ -65,35 +57,27 @@ fn snapshot_sees_old_values_after_delete() {
 }
 
 #[test]
-#[ignore]
 fn snapshot_isolated_from_compaction() {
     let (_dir, db) = open_temp_db();
 
-    // Insert many keys and flush so SSTables exist.
     for i in 0..100u8 {
         let k = format!("k{:03}", i).into_bytes();
         db.put(&k, b"v").unwrap();
     }
 
-    // Force a flush (requires DB::flush implementation).
     db.flush().unwrap();
 
     let snap = db.snapshot();
 
-    // Trigger compaction which might delete old SSTables.
     db.compact_range(None, None).unwrap();
 
-    // Snapshot scans must still return data from the pre-compaction view.
     let start = b"k000";
     let end = b"k255";
     let it = snap.scan(start, end).unwrap();
-    // If implementation returns a Scanner that implements iterator-like
-    // behavior via StorageIterator, advance and assert it's valid.
     assert!(it.is_valid());
 }
 
 #[test]
-#[ignore]
 fn multiple_snapshots_different_views() {
     let (_dir, db) = open_temp_db();
 
@@ -111,29 +95,23 @@ fn multiple_snapshots_different_views() {
 }
 
 #[test]
-#[ignore]
 #[allow(clippy::drop_non_drop)]
 fn snapshot_release_allows_cleanup() {
     let (_dir, db) = open_temp_db();
 
-    // Put and flush to create SSTables on disk.
     db.put(b"x", b"v").unwrap();
     db.flush().unwrap();
 
     let snap = db.snapshot();
 
-    // Trigger compaction — snapshot should pin SSTable files.
     db.compact_range(None, None).unwrap();
 
-    // Check SSTable files still exist while snapshot alive.
     let files_before: Vec<_> = std::fs::read_dir(_dir.path())
         .unwrap()
         .map(|e| e.unwrap().file_name())
         .collect();
     assert!(!files_before.is_empty());
 
-    // Drop snapshot and run compaction again. Old files should become
-    // eligible for deletion (behavior depends on implementation details).
     drop(snap);
     db.compact_range(None, None).unwrap();
 
@@ -142,12 +120,10 @@ fn snapshot_release_allows_cleanup() {
         .map(|e| e.unwrap().file_name())
         .collect();
 
-    // Implementation-specific: the test asserts that files_after is <= files_before.
     assert!(files_after.len() <= files_before.len());
 }
 
 #[test]
-#[ignore]
 fn snapshot_on_empty_db() {
     let (_dir, db) = open_temp_db();
 
