@@ -67,12 +67,14 @@ fn sst_path(db_path: &Path, id: u64) -> PathBuf {
     db_path.join(format!("{:06}.sst", id))
 }
 
-fn run_compaction(
+/// Run one round of compaction if the strategy picks a task.
+/// Returns Ok(true) if compaction was performed, Ok(false) if nothing to do.
+pub fn run_compaction(
     version_set: &VersionSet,
     strategy: &dyn CompactionStrategy,
     db_path: &Path,
     block_size: usize,
-) -> Result<()> {
+) -> Result<bool> {
     // 1. Read current levels (clone to release lock quickly)
     let levels = {
         let current = version_set.current();
@@ -83,7 +85,7 @@ fn run_compaction(
     // 2. Ask strategy if compaction is needed
     let task = match strategy.pick_compaction(&levels) {
         Some(task) => task,
-        None => return Ok(()),
+        None => return Ok(false),
     };
 
     // 3. Read input SSTables into VecIterators
@@ -179,5 +181,5 @@ fn run_compaction(
         let _ = std::fs::remove_file(sst_path(db_path, meta.id));
     }
 
-    Ok(())
+    Ok(true)
 }
