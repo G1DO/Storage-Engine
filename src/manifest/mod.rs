@@ -296,8 +296,7 @@ impl Manifest {
                 }
                 4 => {
                     // VersionSnapshot — reset state to the snapshot
-                    let (snap_version, snap_log, snap_next) =
-                        decode_snapshot(&payload[1..])?;
+                    let (snap_version, snap_log, snap_next) = decode_snapshot(&payload[1..])?;
                     version = snap_version;
                     log_number = snap_log;
                     // next_sst_id is stored as the actual next value,

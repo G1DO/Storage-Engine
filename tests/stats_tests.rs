@@ -45,7 +45,10 @@ fn stats_after_puts_bytes_written_positive() {
     }
 
     let stats = db.stats();
-    assert!(stats.bytes_written > 0, "bytes_written should be > 0 after puts");
+    assert!(
+        stats.bytes_written > 0,
+        "bytes_written should be > 0 after puts"
+    );
 }
 
 // =============================================================================

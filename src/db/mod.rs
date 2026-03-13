@@ -415,9 +415,9 @@ impl DB {
     /// With `(None, None)`: runs compaction repeatedly until no more work.
     /// With `(Some(start), Some(end))`: compacts SSTables overlapping that range.
     pub fn compact_range(&self, _start: Option<&[u8]>, _end: Option<&[u8]>) -> Result<()> {
+        use crate::compaction::leveled::LeveledStrategy;
         use crate::compaction::scheduler::run_compaction;
         use crate::compaction::size_tiered::SizeTieredStrategy;
-        use crate::compaction::leveled::LeveledStrategy;
 
         // Build strategy matching the DB's configured style
         let strategy: Box<dyn crate::compaction::CompactionStrategy> = match self.compaction_style {

@@ -48,7 +48,11 @@ fn snapshot_scan_returns_keys_in_range() {
     let entries = collect_scan(&mut scanner);
 
     let keys: Vec<&[u8]> = entries.iter().map(|(k, _)| k.as_slice()).collect();
-    assert_eq!(keys, vec![b"b", b"c", b"d"], "range [b, e) should yield b, c, d");
+    assert_eq!(
+        keys,
+        vec![b"b", b"c", b"d"],
+        "range [b, e) should yield b, c, d"
+    );
 }
 
 // =============================================================================
@@ -69,7 +73,11 @@ fn snapshot_scan_filters_tombstones() {
     let entries = collect_scan(&mut scanner);
 
     let keys: Vec<&[u8]> = entries.iter().map(|(k, _)| k.as_slice()).collect();
-    assert_eq!(keys, vec![b"k1", b"k3"], "k2 should be filtered (tombstone)");
+    assert_eq!(
+        keys,
+        vec![b"k1", b"k3"],
+        "k2 should be filtered (tombstone)"
+    );
 }
 
 // =============================================================================
@@ -130,7 +138,11 @@ fn snapshot_scan_merges_memtable_and_sstable() {
     let entries = collect_scan(&mut scanner);
 
     let keys: Vec<&[u8]> = entries.iter().map(|(k, _)| k.as_slice()).collect();
-    assert_eq!(keys, vec![b"a", b"b", b"c", b"d"], "merge of memtable + SSTable");
+    assert_eq!(
+        keys,
+        vec![b"a", b"b", b"c", b"d"],
+        "merge of memtable + SSTable"
+    );
 }
 
 // =============================================================================

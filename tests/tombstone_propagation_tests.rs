@@ -84,8 +84,7 @@ fn tombstone_survives_when_deeper_levels_exist() {
     // Compact L0→L1 (NOT bottommost because L2 has overlap)
     let strategy = Arc::new(SizeTieredStrategy::new(1));
     let scheduler =
-        CompactionScheduler::start(Arc::clone(&vs), strategy, db_path.to_path_buf(), 4096)
-            .unwrap();
+        CompactionScheduler::start(Arc::clone(&vs), strategy, db_path.to_path_buf(), 4096).unwrap();
 
     scheduler.notify_flush();
     std::thread::sleep(std::time::Duration::from_millis(300));
@@ -147,8 +146,7 @@ fn tombstone_dropped_at_bottommost() {
     // Compact L0→L1 (L1 IS bottommost, no L2)
     let strategy = Arc::new(SizeTieredStrategy::new(1));
     let scheduler =
-        CompactionScheduler::start(Arc::clone(&vs), strategy, db_path.to_path_buf(), 4096)
-            .unwrap();
+        CompactionScheduler::start(Arc::clone(&vs), strategy, db_path.to_path_buf(), 4096).unwrap();
 
     scheduler.notify_flush();
     std::thread::sleep(std::time::Duration::from_millis(300));
@@ -232,8 +230,7 @@ fn all_tombstones_bottommost_compaction() {
     // Compact L0→L1 (bottommost, no L2)
     let strategy = Arc::new(SizeTieredStrategy::new(1));
     let scheduler =
-        CompactionScheduler::start(Arc::clone(&vs), strategy, db_path.to_path_buf(), 4096)
-            .unwrap();
+        CompactionScheduler::start(Arc::clone(&vs), strategy, db_path.to_path_buf(), 4096).unwrap();
 
     scheduler.notify_flush();
     std::thread::sleep(std::time::Duration::from_millis(300));
@@ -317,8 +314,7 @@ fn put_delete_flush_both_tombstone_persists_in_l1() {
     // Compact with threshold=2 to trigger L0→L1
     let strategy = Arc::new(SizeTieredStrategy::new(2));
     let scheduler =
-        CompactionScheduler::start(Arc::clone(&vs), strategy, db_path.to_path_buf(), 4096)
-            .unwrap();
+        CompactionScheduler::start(Arc::clone(&vs), strategy, db_path.to_path_buf(), 4096).unwrap();
 
     scheduler.notify_flush();
     std::thread::sleep(std::time::Duration::from_millis(300));

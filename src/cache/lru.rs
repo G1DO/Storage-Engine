@@ -25,9 +25,9 @@ struct Node<K> {
 /// — disjoint struct fields avoid borrow conflicts.
 pub struct LRUCache<K, V> {
     map: HashMap<K, (usize, V, usize)>, // key → (node_index, value, entry_size)
-    nodes: Vec<Node<K>>,                 // arena for linked list nodes
-    head: Option<usize>,                 // most recently used (front)
-    tail: Option<usize>,                 // least recently used (back)
+    nodes: Vec<Node<K>>,                // arena for linked list nodes
+    head: Option<usize>,                // most recently used (front)
+    tail: Option<usize>,                // least recently used (back)
     capacity: usize,
     current_size: usize,
     free: Vec<usize>, // recycled node slots

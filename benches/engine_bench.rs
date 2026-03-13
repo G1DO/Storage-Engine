@@ -148,9 +148,7 @@ fn bench_mixed_workload(c: &mut Criterion) {
                     db.put(&make_key(i), &value).unwrap();
                 }
                 let mut rng = rand::thread_rng();
-                let ops: Vec<bool> = (0..NUM_KEYS)
-                    .map(|_| rng.gen_range(0..2) == 0)
-                    .collect();
+                let ops: Vec<bool> = (0..NUM_KEYS).map(|_| rng.gen_range(0..2) == 0).collect();
                 (dir, db, ops)
             },
             |(_dir, db, ops)| {

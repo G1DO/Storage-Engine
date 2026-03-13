@@ -156,8 +156,14 @@ fn get_refreshes_recency() {
     // Insert new block → should evict 100 (now LRU), NOT 0
     cache.insert(1, 300, vec![0xDD; 100]);
 
-    assert!(cache.get(1, 0).is_some(), "block 0 was refreshed, should survive");
-    assert!(cache.get(1, 100).is_none(), "block 100 should be evicted (was LRU)");
+    assert!(
+        cache.get(1, 0).is_some(),
+        "block 0 was refreshed, should survive"
+    );
+    assert!(
+        cache.get(1, 100).is_none(),
+        "block 100 should be evicted (was LRU)"
+    );
     assert!(cache.get(1, 200).is_some(), "block 200 should remain");
     assert!(cache.get(1, 300).is_some(), "block 300 should be present");
 }
@@ -178,7 +184,10 @@ fn different_sst_ids_are_independent() {
 
     assert_eq!(*block_1, vec![0x11; 50]);
     assert_eq!(*block_2, vec![0x22; 50]);
-    assert_ne!(*block_1, *block_2, "different SSTables should have different data");
+    assert_ne!(
+        *block_1, *block_2,
+        "different SSTables should have different data"
+    );
 }
 
 // =============================================================================
@@ -230,7 +239,13 @@ fn concurrent_reads_no_data_races() {
                 let offset = ((thread_id + round) % 10) * 100;
                 let mut c = cache_clone.lock().unwrap();
                 let result = c.get(1, offset);
-                assert!(result.is_some(), "thread {} round {} offset {} should hit", thread_id, round, offset);
+                assert!(
+                    result.is_some(),
+                    "thread {} round {} offset {} should hit",
+                    thread_id,
+                    round,
+                    offset
+                );
             }
         }));
     }

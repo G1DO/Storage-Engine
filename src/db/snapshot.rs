@@ -26,7 +26,10 @@ impl Snapshot {
     /// Search order: memtable snapshot → L0 (newest-first) → L1+
     pub fn get(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
         // 1. Check captured memtable entries (binary search, they're sorted)
-        if let Ok(idx) = self.memtable_entries.binary_search_by(|(k, _)| k.as_slice().cmp(key)) {
+        if let Ok(idx) = self
+            .memtable_entries
+            .binary_search_by(|(k, _)| k.as_slice().cmp(key))
+        {
             let value = &self.memtable_entries[idx].1;
             if value.is_empty() {
                 return Ok(None); // tombstone
@@ -73,7 +76,13 @@ impl Snapshot {
     /// Merges memtable snapshot + all SSTable data using MergeIterator.
     /// Tombstones are filtered — deleted keys are not yielded.
     pub fn scan(&self, start: &[u8], end: &[u8]) -> Result<Scanner> {
-        Scanner::build(&self.memtable_entries, &self.version, &self.path, start, end)
+        Scanner::build(
+            &self.memtable_entries,
+            &self.version,
+            &self.path,
+            start,
+            end,
+        )
     }
 }
 

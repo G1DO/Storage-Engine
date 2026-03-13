@@ -175,7 +175,12 @@ fn compact_range_none_none_compacts_all() {
     for i in 0..200u32 {
         let key = format!("key_{:05}", i).into_bytes();
         let val = db.get(&key).unwrap();
-        assert_eq!(val, Some(b"value".to_vec()), "key_{:05} missing after compact", i);
+        assert_eq!(
+            val,
+            Some(b"value".to_vec()),
+            "key_{:05} missing after compact",
+            i
+        );
     }
 }
 
@@ -233,7 +238,8 @@ fn thread_safety_concurrent_put_get() {
         assert_eq!(
             db.get(&key).unwrap(),
             Some(b"written".to_vec()),
-            "key k{:04} should exist", i
+            "key k{:04} should exist",
+            i
         );
     }
 }

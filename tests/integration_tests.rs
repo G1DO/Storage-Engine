@@ -69,7 +69,12 @@ fn delete_compact_verify_gone() {
         if i % 2 == 0 {
             assert_eq!(db.get(&key).unwrap(), None, "k{:03} should be deleted", i);
         } else {
-            assert_eq!(db.get(&key).unwrap(), Some(b"val".to_vec()), "k{:03} should exist", i);
+            assert_eq!(
+                db.get(&key).unwrap(),
+                Some(b"val".to_vec()),
+                "k{:03} should exist",
+                i
+            );
         }
     }
 
@@ -117,8 +122,8 @@ fn scan_after_mixed_operations() {
     db.flush().unwrap();
 
     db.put(b"b", b"updated").unwrap(); // update in memtable
-    db.delete(b"c").unwrap();          // tombstone in memtable
-    db.put(b"d", b"4").unwrap();       // new key in memtable
+    db.delete(b"c").unwrap(); // tombstone in memtable
+    db.put(b"d", b"4").unwrap(); // new key in memtable
 
     let mut scanner = db.scan(b"a", b"e").unwrap();
     let mut entries = Vec::new();
