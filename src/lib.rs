@@ -22,5 +22,6 @@ pub mod types;
 pub mod wal;
 
 // Public re-exports for the top-level API
+pub use compaction::CompactionStyle;
 pub use db::{DB, Options, Stats};
 pub use error::{Error, Result};
